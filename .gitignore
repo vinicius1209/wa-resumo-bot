@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment (contains API keys)
+.env
+.env.local
+
+# WhatsApp session credentials
+auth_info/
+
+# SQLite database (runtime data)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/

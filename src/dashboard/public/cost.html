@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custo — WA-Resumo-Bot</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-brand">WA-Resumo-Bot</div>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Overview</a>
+      <a href="/groups.html" class="nav-link">Grupos</a>
+      <a href="/live.html" class="nav-link">Live Feed</a>
+      <a href="/cost.html" class="nav-link">Custo</a>
+      <a href="/config.html" class="nav-link">Config</a>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <div class="page-header">
+      <h1>Custo</h1>
+      <p class="subtitle">Acompanhe gastos com LLM por modelo e provider</p>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid-4" style="margin-bottom: 24px;">
+      <div class="card">
+        <div class="card-title">Custo Hoje</div>
+        <div class="card-value" id="cost-today">--</div>
+        <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="cost-today-detail">Carregando...</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Custo Semanal</div>
+        <div class="card-value" id="cost-weekly">--</div>
+        <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="cost-weekly-detail">Carregando...</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Projecao Mensal</div>
+        <div class="card-value" id="cost-monthly">--</div>
+        <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="cost-monthly-detail">Estimativa baseada na media diaria</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Tokens Semana</div>
+        <div class="card-value" id="tokens-weekly">--</div>
+        <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="tokens-weekly-detail">Carregando...</div>
+      </div>
+    </div>
+
+    <!-- Daily Cost Chart -->
+    <div class="card" style="margin-bottom: 32px;">
+      <h3 class="section-title" style="margin-bottom: 16px;">Custo Diario (ultimos 30 dias)</h3>
+      <div style="position: relative; height: 320px;">
+        <canvas id="cost-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Cost by Model Table -->
+    <h3 class="section-title">Custo por Modelo</h3>
+    <table style="margin-bottom: 32px;">
+      <thead>
+        <tr>
+          <th>Modelo</th>
+          <th>Custo</th>
+          <th>Porcentagem</th>
+        </tr>
+      </thead>
+      <tbody id="model-tbody">
+        <tr><td colspan="3" style="color: #71717a; text-align: center;">Carregando...</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Cost by Provider Table -->
+    <h3 class="section-title">Custo por Provider</h3>
+    <table style="margin-bottom: 32px;">
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Custo</th>
+          <th>Porcentagem</th>
+        </tr>
+      </thead>
+      <tbody id="provider-tbody">
+        <tr><td colspan="3" style="color: #71717a; text-align: center;">Carregando...</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    var costChart = null;
+
+    function renderBreakdownTable(tbodyId, data, totalCost) {
+      var tbody = document.getElementById(tbodyId);
+      var entries = Object.entries(data || {});
+
+      if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="color: #71717a; text-align: center;">Sem dados</td></tr>';
+        return;
+      }
+
+      // Sort by cost descending
+      entries.sort(function(a, b) { return b[1] - a[1]; });
+
+      tbody.innerHTML = entries.map(function(entry) {
+        var name = entry[0];
+        var cost = entry[1];
+        var pct = totalCost > 0 ? ((cost / totalCost) * 100).toFixed(1) : '0.0';
+        return '<tr>'
+          + '<td>' + escapeHtml(name) + '</td>'
+          + '<td>' + formatCost(cost) + '</td>'
+          + '<td>' + pct + '%</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    function renderChart(dailyCosts) {
+      var ctx = document.getElementById('cost-chart').getContext('2d');
+
+      if (costChart) {
+        costChart.destroy();
+      }
+
+      var labels = dailyCosts.map(function(d) { return d.date; });
+      var data = dailyCosts.map(function(d) { return d.cost; });
+
+      costChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Custo (USD)',
+            data: data,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: '#3b82f6',
+            pointBorderColor: '#3b82f6',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return '$' + context.parsed.y.toFixed(4);
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#71717a',
+                maxRotation: 45,
+                maxTicksLimit: 15
+              },
+              grid: {
+                color: '#27272a'
+              }
+            },
+            y: {
+              ticks: {
+                color: '#71717a',
+                callback: function(value) {
+                  return '$' + value.toFixed(4);
+                }
+              },
+              grid: {
+                color: '#27272a'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function loadCostData() {
+      // Fetch all three endpoints in parallel
+      var dailyPromise = apiFetch('/api/analytics/daily');
+      var weeklyPromise = apiFetch('/api/analytics/weekly');
+      var dailyCostsPromise = apiFetch('/api/analytics/daily-costs');
+
+      dailyPromise.then(function(daily) {
+        document.getElementById('cost-today').textContent = formatCost(daily.estimatedCost || 0);
+        var totalTokens = (daily.totalTokens.input || 0) + (daily.totalTokens.output || 0);
+        document.getElementById('cost-today-detail').textContent =
+          formatTokens(totalTokens) + ' tokens';
+      }).catch(function() {
+        document.getElementById('cost-today').textContent = '--';
+        document.getElementById('cost-today-detail').textContent = 'Erro ao carregar';
+      });
+
+      weeklyPromise.then(function(weekly) {
+        var totalCost = weekly.totalCost || 0;
+        document.getElementById('cost-weekly').textContent = formatCost(totalCost);
+        var providers = Object.keys(weekly.byProvider || {}).join(', ');
+        document.getElementById('cost-weekly-detail').textContent = providers || 'Sem dados';
+
+        // Monthly projection: weekly / 7 * 30
+        var dailyAvg = totalCost / 7;
+        var monthlyProjection = dailyAvg * 30;
+        document.getElementById('cost-monthly').textContent = formatCost(monthlyProjection);
+
+        // Weekly tokens
+        var weeklyTokens = (weekly.totalTokens.input || 0) + (weekly.totalTokens.output || 0);
+        document.getElementById('tokens-weekly').textContent = formatTokens(weeklyTokens);
+        document.getElementById('tokens-weekly-detail').textContent =
+          'In: ' + formatTokens(weekly.totalTokens.input || 0)
+          + ' | Out: ' + formatTokens(weekly.totalTokens.output || 0);
+
+        // Render breakdown tables
+        renderBreakdownTable('model-tbody', weekly.byModel, totalCost);
+        renderBreakdownTable('provider-tbody', weekly.byProvider, totalCost);
+      }).catch(function() {
+        document.getElementById('cost-weekly').textContent = '--';
+        document.getElementById('cost-weekly-detail').textContent = 'Erro ao carregar';
+        document.getElementById('tokens-weekly').textContent = '--';
+        document.getElementById('tokens-weekly-detail').textContent = 'Erro ao carregar';
+      });
+
+      dailyCostsPromise.then(function(dailyCosts) {
+        if (Array.isArray(dailyCosts) && dailyCosts.length > 0) {
+          renderChart(dailyCosts);
+        }
+      }).catch(function() {
+        // Chart area will remain empty
+      });
+    }
+
+    // Init
+    if (checkAuth()) {
+      initNav();
+      loadCostData();
+    }
+  </script>
+</body>
+</html>

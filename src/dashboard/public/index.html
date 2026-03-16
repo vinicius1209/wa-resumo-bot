@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WA-Resumo-Bot — Admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+
+  <!-- Login (sem nav) -->
+  <div id="login-view" class="login-container">
+    <div class="login-box">
+      <h1>WA-Resumo-Bot</h1>
+      <p style="text-align:center;color:var(--text-muted);margin-bottom:24px;">Admin Dashboard</p>
+      <div class="form-group">
+        <input type="password" id="token-input" placeholder="Token de acesso" />
+      </div>
+      <button class="btn btn-primary" id="login-btn">Entrar</button>
+      <p id="login-error" class="hidden" style="color:var(--error);text-align:center;margin-top:12px;font-size:0.85rem;"></p>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard-view" class="hidden">
+    <nav class="navbar">
+      <div class="nav-brand">WA-Resumo-Bot</div>
+      <div class="nav-links">
+        <a href="/" class="nav-link">Overview</a>
+        <a href="/groups.html" class="nav-link">Grupos</a>
+        <a href="/live.html" class="nav-link">Live Feed</a>
+        <a href="/cost.html" class="nav-link">Custo</a>
+        <a href="/config.html" class="nav-link">Config</a>
+      </div>
+    </nav>
+
+    <div class="container">
+      <div class="page-header">
+        <h1>Overview</h1>
+        <p class="subtitle">Monitoramento em tempo real do bot</p>
+      </div>
+
+      <!-- Status cards -->
+      <div class="grid-4" style="margin-bottom:24px;">
+        <div class="card">
+          <div class="card-title">Status</div>
+          <div class="card-value" id="status-value">--</div>
+          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="status-detail">Carregando...</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Comandos hoje</div>
+          <div class="card-value" id="commands-value">--</div>
+          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="commands-detail"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Custo hoje</div>
+          <div class="card-value" id="cost-value">--</div>
+          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="cost-detail"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Tokens hoje</div>
+          <div class="card-value" id="tokens-value">--</div>
+          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;" id="tokens-detail"></div>
+        </div>
+      </div>
+
+      <!-- Hourly usage chart -->
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-title">Uso por hora (últimas 24h)</div>
+        <div class="chart-container" style="height:280px;">
+          <canvas id="hourly-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Groups + Live Feed side by side -->
+      <div class="grid-2" style="margin-bottom:24px;">
+        <!-- Groups summary -->
+        <div class="card">
+          <div class="card-title">Grupos</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                <th>Status</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody id="groups-tbody">
+              <tr><td colspan="3" style="color:var(--text-muted);">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mini live feed -->
+        <div class="card">
+          <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+            Live Feed
+            <span id="ws-indicator" class="ws-indicator" title="WebSocket desconectado"></span>
+          </div>
+          <div id="live-feed" style="max-height:350px;overflow-y:auto;font-family:'Courier New',monospace;font-size:0.8rem;line-height:1.8;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    var MAX_FEED_ITEMS = 30;
+    var miniFeedItems = [];
+    var restoring = false;
+    var hourlyChart = null;
+
+    // Login
+    document.getElementById('login-btn').addEventListener('click', doLogin);
+    document.getElementById('token-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    function doLogin() {
+      var input = document.getElementById('token-input');
+      TOKEN = input.value.trim();
+      if (!TOKEN) return;
+
+      apiFetch('/api/status').then(function() {
+        localStorage.setItem('dashboard_token', TOKEN);
+        showDashboard();
+      }).catch(function() {
+        document.getElementById('login-error').textContent = 'Token inválido';
+        document.getElementById('login-error').classList.remove('hidden');
+      });
+    }
+
+    function showLogin() {
+      document.getElementById('login-view').classList.remove('hidden');
+      document.getElementById('dashboard-view').classList.add('hidden');
+    }
+
+    function showDashboard() {
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('dashboard-view').classList.remove('hidden');
+      initNav();
+      loadAll();
+      try {
+        var saved = sessionStorage.getItem('miniFeedItems');
+        if (saved) {
+          var items = JSON.parse(saved);
+          miniFeedItems = items;
+          restoring = true;
+          for (var i = items.length - 1; i >= 0; i--) { addFeedItem(items[i]); }
+          restoring = false;
+        }
+      } catch(e) {}
+      connectWebSocket(onWsMessage);
+    }
+
+    // ============================================
+    // Data loading
+    // ============================================
+
+    function loadAll() {
+      loadStatus();
+      loadDaily();
+      loadGroups();
+      loadHourlyChart();
+    }
+
+    function loadStatus() {
+      apiFetch('/api/status').then(function(data) {
+        document.getElementById('status-value').innerHTML =
+          '<span class="status-dot status-online"></span>Online';
+        document.getElementById('status-detail').textContent =
+          'Uptime: ' + formatUptime(data.uptime) + ' | Grupos: ' + data.groups;
+      }).catch(function() {
+        document.getElementById('status-value').innerHTML =
+          '<span class="status-dot status-offline"></span>Offline';
+      });
+    }
+
+    function loadDaily() {
+      apiFetch('/api/analytics/daily').then(function(data) {
+        document.getElementById('commands-value').textContent = data.totalCommands;
+        var breakdown = Object.keys(data.commandBreakdown || {}).map(function(k) {
+          return k + ': ' + data.commandBreakdown[k];
+        }).join(', ');
+        document.getElementById('commands-detail').textContent = breakdown || 'Nenhum comando';
+
+        document.getElementById('cost-value').textContent = formatCost(data.estimatedCost);
+        document.getElementById('cost-detail').textContent =
+          'Erros: ' + data.errors + ' | Mídia: ' + data.mediaProcessed.total;
+
+        var totalTokens = data.totalTokens.input + data.totalTokens.output;
+        document.getElementById('tokens-value').textContent = formatTokens(totalTokens);
+        document.getElementById('tokens-detail').textContent =
+          'In: ' + formatTokens(data.totalTokens.input) + ' | Out: ' + formatTokens(data.totalTokens.output);
+      }).catch(function() {});
+    }
+
+    function loadGroups() {
+      apiFetch('/api/groups').then(function(groups) {
+        var tbody = document.getElementById('groups-tbody');
+
+        if (groups.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Nenhum grupo registrado</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = groups.map(function(g) {
+          var name = escapeHtml(g.group_name || shortenGroupId(g.group_id));
+          var isAllowed = g.allowed === 1;
+          var badge = isAllowed
+            ? '<span class="badge badge-allowed">Permitido</span>'
+            : '<span class="badge badge-blocked">Bloqueado</span>';
+          var btn = isAllowed
+            ? '<button class="btn btn-block btn-sm" onclick="toggleGroup(\'' + g.group_id + '\', false)">Bloquear</button>'
+            : '<button class="btn btn-allow btn-sm" onclick="toggleGroup(\'' + g.group_id + '\', true)">Permitir</button>';
+          return '<tr><td>' + name + '</td><td>' + badge + '</td><td>' + btn + '</td></tr>';
+        }).join('');
+      }).catch(function() {});
+    }
+
+    function toggleGroup(id, allow) {
+      var path = '/api/groups/' + encodeURIComponent(id) + (allow ? '/allow' : '/block');
+      apiFetch(path, { method: 'PUT' }).then(function() {
+        loadGroups();
+      });
+    }
+
+    // ============================================
+    // Hourly Chart
+    // ============================================
+
+    function loadHourlyChart() {
+      apiFetch('/api/analytics/hourly').then(function(data) {
+        var labels = data.map(function(d) { return d.hour + 'h'; });
+        var commands = data.map(function(d) { return d.commands; });
+        var llm = data.map(function(d) { return d.llmCalls; });
+        var media = data.map(function(d) { return d.media; });
+
+        var ctx = document.getElementById('hourly-chart').getContext('2d');
+
+        if (hourlyChart) hourlyChart.destroy();
+
+        hourlyChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Comandos',
+                data: commands,
+                backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                borderRadius: 4
+              },
+              {
+                label: 'LLM Calls',
+                data: llm,
+                backgroundColor: 'rgba(139, 92, 246, 0.7)',
+                borderRadius: 4
+              },
+              {
+                label: 'Mídia',
+                data: media,
+                backgroundColor: 'rgba(20, 184, 166, 0.7)',
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: { color: '#888', font: { size: 12 } }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#71717a' },
+                grid: { color: '#27272a' }
+              },
+              y: {
+                beginAtZero: true,
+                ticks: { color: '#71717a', stepSize: 1 },
+                grid: { color: '#27272a' }
+              }
+            }
+          }
+        });
+      }).catch(function() {});
+    }
+
+    // ============================================
+    // WebSocket Live Feed (mini)
+    // ============================================
+
+    function onWsMessage(event) {
+      addFeedItem(event);
+    }
+
+    function addFeedItem(event) {
+      var feed = document.getElementById('live-feed');
+      if (!feed) return;
+
+      var time = formatTime(event.timestamp);
+      var text = '';
+      var cssClass = '';
+      var d = event.data || {};
+
+      switch (event.type) {
+        case 'message':
+          var content = d.content || '';
+          if (content.length > 60) content = content.substring(0, 60) + '...';
+          text = '\uD83D\uDCAC ' + (d.senderName || '?') + ': ' + content;
+          cssClass = 'feed-msg';
+          break;
+        case 'command':
+          var dur = ((d.durationMs || 0) / 1000).toFixed(1);
+          text = '\u26A1 /' + (d.command || '?') + ' por ' + (d.senderName || '?') + ' (' + dur + 's)';
+          if (!d.success) text += ' [ERRO]';
+          cssClass = 'feed-cmd';
+          break;
+        case 'media':
+          text = '\uD83D\uDDBC\uFE0F ' + (d.mediaType || '?') + ' processada';
+          cssClass = 'feed-media';
+          break;
+        case 'sentiment':
+          text = '\uD83C\uDF21\uFE0F ' + shortenGroupId(d.groupId) + ': ' + (d.label || '?');
+          cssClass = 'feed-sent';
+          break;
+        case 'error':
+          text = '\u274C [' + (d.service || '?') + '] ' + (d.message || '');
+          cssClass = 'feed-err';
+          break;
+        case 'llm_call':
+          var ldur = ((d.durationMs || 0) / 1000).toFixed(1);
+          var tokens = (d.tokensInput || 0) + (d.tokensOutput || 0);
+          text = '\uD83E\uDDE0 ' + (d.provider || '?') + '/' + (d.model || '?') + ' (' + tokens + 'tk, ' + ldur + 's)';
+          cssClass = 'feed-llm';
+          break;
+        default:
+          text = event.type + ': ' + JSON.stringify(d);
+      }
+
+      var div = document.createElement('div');
+      div.style.padding = '3px 0';
+      div.style.borderBottom = '1px solid rgba(39,39,42,0.4)';
+      div.innerHTML = '<span style="color:#52525b;">[' + time + ']</span> <span class="' + cssClass + '">' + escapeHtml(text) + '</span>';
+
+      feed.insertBefore(div, feed.firstChild);
+
+      while (feed.children.length > MAX_FEED_ITEMS) {
+        feed.removeChild(feed.lastChild);
+      }
+
+      if (!restoring) {
+        miniFeedItems.unshift(event);
+        while (miniFeedItems.length > MAX_FEED_ITEMS) { miniFeedItems.pop(); }
+        try { sessionStorage.setItem('miniFeedItems', JSON.stringify(miniFeedItems)); } catch(e) {}
+      }
+    }
+
+    // ============================================
+    // Auto-refresh every 60s
+    // ============================================
+    setInterval(function() {
+      if (!document.getElementById('dashboard-view').classList.contains('hidden')) {
+        loadStatus();
+        loadDaily();
+      }
+    }, 60000);
+
+    // ============================================
+    // Init
+    // ============================================
+    if (TOKEN) {
+      apiFetch('/api/status').then(function() {
+        showDashboard();
+      }).catch(function() {
+        showLogin();
+      });
+    } else {
+      showLogin();
+    }
+  </script>
+
+  <style>
+    .feed-msg { color: #fafafa; }
+    .feed-cmd { color: #eab308; }
+    .feed-media { color: #14b8a6; }
+    .feed-sent { color: #f97316; }
+    .feed-err { color: #ef4444; }
+    .feed-llm { color: #8b5cf6; }
+  </style>
+</body>
+</html>

@@ -1,0 +1,13 @@
+export { CommandHandler } from './command-handler';
+export { ResumoCommand } from './resumo-command';
+export { HelpCommand } from './help-command';
+export { StatsCommand } from './stats-command';
+export { PalavrasCommand } from './palavras-command';
+export { LinksCommand } from './links-command';
+export { RetroCommand } from './retro-command';
+export { DividaCommand } from './divida-command';
+export { QuizCommand, isQuizAnswer } from './quiz-command';
+export { CompromissosCommand } from './compromissos-command';
+export { TemperaturaCommand } from './temperatura-command';
+export { PersonaCommand } from './persona-command';
+export { MePerdiCommand } from './meperdi-command';
