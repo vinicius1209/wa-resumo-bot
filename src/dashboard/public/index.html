@@ -356,7 +356,11 @@
       if (!restoring) {
         miniFeedItems.unshift(event);
         while (miniFeedItems.length > MAX_FEED_ITEMS) { miniFeedItems.pop(); }
-        try { sessionStorage.setItem('miniFeedItems', JSON.stringify(miniFeedItems)); } catch(e) {}
+        try {
+          sessionStorage.setItem('miniFeedItems', JSON.stringify(miniFeedItems));
+          // Also update liveFeedItems so Live Feed page has data
+          sessionStorage.setItem('liveFeedItems', JSON.stringify(miniFeedItems));
+        } catch(e) {}
       }
     }
 

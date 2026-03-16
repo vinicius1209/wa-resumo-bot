@@ -5,15 +5,11 @@
 // Auth
 var TOKEN = localStorage.getItem('dashboard_token') || '';
 
-function headers() {
-  return {
-    'Authorization': 'Bearer ' + TOKEN,
-    'Content-Type': 'application/json'
-  };
-}
-
 function apiFetch(path, opts) {
-  var fetchOpts = Object.assign({}, { headers: headers() }, opts || {});
+  opts = opts || {};
+  var h = { 'Authorization': 'Bearer ' + TOKEN };
+  if (opts.body) h['Content-Type'] = 'application/json';
+  var fetchOpts = Object.assign({}, { headers: h }, opts);
   return fetch(path, fetchOpts).then(function(res) {
     if (res.status === 401 || res.status === 403) {
       window.location.href = '/';
