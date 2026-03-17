@@ -22,6 +22,14 @@ const RATE_LIMITED_COMMANDS = new Set([
   'persona', 'perfil', 'meperdi', 'catchup',
 ]);
 
+export interface HandleResult {
+  handled: boolean;
+  /** True quando o bot foi mencionado mas nenhum comando válido foi encontrado */
+  isBotMention: boolean;
+  /** Texto completo após a @menção (para roteamento conversacional) */
+  mentionText?: string;
+}
+
 export class CommandHandler {
   private commands: Map<string, ICommand> = new Map();
   private analytics: AnalyticsService | null = null;
@@ -76,27 +84,41 @@ export class CommandHandler {
 
   /**
    * Tenta processar uma mensagem como comando.
-   * Retorna true se um comando foi executado.
+   * Retorna resultado detalhado para roteamento conversacional.
    */
   async handleMessage(
     message: StoredMessage,
     reply: (text: string) => Promise<void>
-  ): Promise<boolean> {
+  ): Promise<HandleResult> {
     const content = message.content.trim();
 
     // Tentar detectar comando por prefixo
     const prefixResult = this.parsePrefix(content);
     if (prefixResult) {
-      return this.executeCommand(prefixResult.command, prefixResult.args, message, reply);
+      const handled = await this.executeCommand(prefixResult.command, prefixResult.args, message, reply);
+      return { handled, isBotMention: false };
     }
 
     // Tentar detectar menção ao bot
     const mentionResult = this.parseMention(content);
     if (mentionResult) {
-      return this.executeCommand(mentionResult.command, mentionResult.args, message, reply);
+      // Verificar se o "comando" extraído é realmente um comando registrado
+      const command = this.commands.get(mentionResult.command);
+      if (command) {
+        const handled = await this.executeCommand(mentionResult.command, mentionResult.args, message, reply);
+        return { handled, isBotMention: true };
+      }
+
+      // Menção ao bot mas sem comando válido → candidato a conversa
+      // Reconstruir o texto completo após a menção
+      const fullMentionText = mentionResult.args
+        ? `${mentionResult.command} ${mentionResult.args}`
+        : mentionResult.command;
+
+      return { handled: false, isBotMention: true, mentionText: fullMentionText };
     }
 
-    return false;
+    return { handled: false, isBotMention: false };
   }
 
   /**

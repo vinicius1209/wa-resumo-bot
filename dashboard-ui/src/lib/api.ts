@@ -93,6 +93,36 @@ export interface DailyCost {
   cost: number
 }
 
+export interface ConversationSessionSummary {
+  sessionId: string
+  groupId: string
+  groupName: string
+  senderId: string
+  senderName: string
+  turnsCount: number
+  createdAt: number
+  lastActivity: number
+  status: 'active' | 'expired'
+}
+
+export interface ConversationTurn {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
+export interface ConversationSessionDetail {
+  sessionId: string
+  groupId: string
+  groupName: string
+  senderId: string
+  senderName: string
+  turns: ConversationTurn[]
+  contextSnapshot: string | null
+  createdAt: number
+  lastActivity: number
+}
+
 // API calls
 export const api = {
   status: () => apiFetch<BotStatus>('/api/status'),
@@ -123,4 +153,11 @@ export const api = {
   config: () => apiFetch<Record<string, string>>('/api/config'),
   updateConfig: (data: Record<string, string>) =>
     apiFetch('/api/config', { method: 'PUT', body: JSON.stringify(data) }),
+  conversations: (groupId?: string, limit = 50, offset = 0) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (groupId) params.set('groupId', groupId)
+    return apiFetch<ConversationSessionSummary[]>(`/api/conversations?${params}`)
+  },
+  conversationDetail: (sessionId: string) =>
+    apiFetch<ConversationSessionDetail>(`/api/conversations/${encodeURIComponent(sessionId)}`),
 }

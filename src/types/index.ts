@@ -86,8 +86,37 @@ export interface ILLMProvider {
   /** Gera um resumo a partir das mensagens */
   summarize(request: LLMSummaryRequest): Promise<LLMSummaryResponse>;
 
+  /** Chat multi-turn (opcional — necessário para modo conversacional) */
+  chat?(request: LLMChatRequest): Promise<LLMChatResponse>;
+
   /** Verifica se o provider está configurado e funcional */
   healthCheck(): Promise<boolean>;
+}
+
+// ============================================
+// LLM Chat — modo conversacional
+// ============================================
+export interface LLMChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface LLMChatRequest {
+  messages: LLMChatMessage[];
+  /** Override de temperatura (default 0.7 para conversa) */
+  temperature?: number;
+  /** Override de max tokens (default 1000 para turns) */
+  maxTokens?: number;
+}
+
+export interface LLMChatResponse {
+  content: string;
+  tokensUsed: {
+    input: number;
+    output: number;
+  };
+  provider: string;
+  model: string;
 }
 
 // ============================================
@@ -186,6 +215,14 @@ export interface AppConfig {
     enabled: boolean;
     port: number;
     token: string;
+  };
+  conversation: {
+    enabled: boolean;
+    maxTurns: number;
+    sessionTtlMinutes: number;
+    dmEnabled: boolean;
+    temperature: number;
+    maxTokens: number;
   };
   logLevel: string;
 }

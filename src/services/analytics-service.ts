@@ -26,7 +26,7 @@ const PRICING: Record<string, { input: number; output: number } | { perMinute: n
 };
 
 export interface AnalyticsEvent {
-  eventType: 'command' | 'llm_call' | 'media_process' | 'error';
+  eventType: 'command' | 'llm_call' | 'media_process' | 'error' | 'conversation';
   groupId?: string;
   senderId?: string;
   commandName?: string;

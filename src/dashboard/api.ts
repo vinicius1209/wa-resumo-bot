@@ -8,6 +8,7 @@ import { AnalyticsService } from '../services/analytics-service';
 import { DynamicConfigService } from '../services/dynamic-config-service';
 import { SQLiteStorage } from '../storage/sqlite-storage';
 import { CommandHandler } from '../commands/command-handler';
+import { ConversationService } from '../services/conversation-service';
 import { CommandContext } from '../types';
 import { config } from '../config';
 import { getConnectedClients } from './websocket';
@@ -17,6 +18,7 @@ export interface DashboardServices {
   dynamicConfigService: DynamicConfigService;
   commandHandler?: CommandHandler;
   storage?: SQLiteStorage;
+  conversationService?: ConversationService;
 }
 
 export async function apiRoutes(
@@ -137,10 +139,41 @@ export async function apiRoutes(
   });
 
   // ============================================
-  // Silent Command Execution
+  // Conversations (viewer)
   // ============================================
 
-  const { commandHandler, storage } = opts.services;
+  const { commandHandler, storage, conversationService } = opts.services;
+
+  if (conversationService) {
+    fastify.get('/api/conversations', async (request: FastifyRequest, _reply: FastifyReply) => {
+      const query = request.query as { groupId?: string; limit?: string; offset?: string };
+      const limit = Math.min(parseInt(query.limit || '50', 10), 200);
+      const offset = parseInt(query.offset || '0', 10);
+      const sessions = conversationService.listSessions(query.groupId || undefined, limit, offset);
+
+      // Enriquecer com nome do grupo
+      return sessions.map((s) => {
+        const groupSettings = dynamicConfigService.getGroupSettings(s.groupId);
+        return {
+          ...s,
+          groupName: groupSettings?.group_name || s.groupId,
+        };
+      });
+    });
+
+    fastify.get('/api/conversations/:sessionId', async (request: FastifyRequest, reply: FastifyReply) => {
+      const { sessionId } = request.params as { sessionId: string };
+      const session = conversationService.getSession(sessionId);
+      if (!session) {
+        return reply.status(404).send({ error: 'Sessão não encontrada' });
+      }
+      const groupSettings = dynamicConfigService.getGroupSettings(session.groupId);
+      return {
+        ...session,
+        groupName: groupSettings?.group_name || session.groupId,
+      };
+    });
+  }
 
   // ============================================
   // Chat History (persistent, no purge)

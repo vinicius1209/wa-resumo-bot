@@ -7,6 +7,7 @@ import { OverviewPage } from '@/pages/OverviewPage'
 import { ChatPage } from '@/pages/ChatPage'
 import { GroupsPage } from '@/pages/GroupsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ConversationsPage } from '@/pages/ConversationsPage'
 
 function ProtectedRoute() {
   const token = getToken()
@@ -38,6 +39,7 @@ export default function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/overview" element={<OverviewPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/conversations" element={<ConversationsPage />} />
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

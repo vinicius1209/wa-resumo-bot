@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom'
-import { LayoutDashboard, MessageSquare, Users, Settings } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Users, Settings, MessagesSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AppSidebarProps {
@@ -9,6 +9,7 @@ interface AppSidebarProps {
 const navItems = [
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/conversations', label: 'Conversas', icon: MessagesSquare },
   { to: '/groups', label: 'Grupos', icon: Users },
   { to: '/settings', label: 'Config', icon: Settings },
 ] as const

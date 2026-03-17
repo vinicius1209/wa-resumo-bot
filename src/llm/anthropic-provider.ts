@@ -4,7 +4,7 @@
  * Plug and play: basta ter ANTHROPIC_API_KEY no .env.
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { ILLMProvider, LLMSummaryRequest, LLMSummaryResponse } from '../types';
+import { ILLMProvider, LLMSummaryRequest, LLMSummaryResponse, LLMChatRequest, LLMChatResponse } from '../types';
 import { config } from '../config';
 import { SYSTEM_PROMPT, formatMessagesForLLM } from './base-prompt';
 
@@ -45,6 +45,42 @@ export class AnthropicProvider implements ILLMProvider {
 
     return {
       summary,
+      tokensUsed: {
+        input: response.usage.input_tokens,
+        output: response.usage.output_tokens,
+      },
+      provider: this.name,
+      model: this.model,
+    };
+  }
+
+  async chat(request: LLMChatRequest): Promise<LLMChatResponse> {
+    // Anthropic requer system como parâmetro separado
+    const systemMessages = request.messages.filter((m) => m.role === 'system');
+    const chatMessages = request.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
+    const systemPrompt = systemMessages.map((m) => m.content).join('\n\n');
+
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: request.maxTokens ?? config.conversation.maxTokens,
+      system: systemPrompt || undefined,
+      messages: chatMessages,
+      temperature: request.temperature ?? config.conversation.temperature,
+    });
+
+    const textBlock = response.content.find((block) => block.type === 'text');
+    const content = textBlock && 'text' in textBlock
+      ? textBlock.text
+      : 'Não consegui gerar uma resposta.';
+
+    return {
+      content,
       tokensUsed: {
         input: response.usage.input_tokens,
         output: response.usage.output_tokens,

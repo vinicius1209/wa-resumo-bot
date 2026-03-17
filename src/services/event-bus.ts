@@ -45,6 +45,10 @@ class EventBus extends EventEmitter {
   emitLLMCall(provider: string, model: string, tokensInput: number, tokensOutput: number, costUsd: number, durationMs: number): void {
     this.emitBotEvent('llm_call', { provider, model, tokensInput, tokensOutput, costUsd, durationMs });
   }
+
+  emitConversation(groupId: string, senderName: string, durationMs: number, success: boolean): void {
+    this.emitBotEvent('conversation', { groupId, senderName, durationMs, success });
+  }
 }
 
 /** Instância singleton do EventBus */

@@ -48,5 +48,13 @@ export const config: AppConfig = {
     port: envInt('DASHBOARD_PORT', 3000),
     token: env('DASHBOARD_TOKEN', 'change-me'),
   },
+  conversation: {
+    enabled: env('CONVERSATION_ENABLED', 'false') === 'true',
+    maxTurns: envInt('CONVERSATION_MAX_TURNS', 20),
+    sessionTtlMinutes: envInt('CONVERSATION_SESSION_TTL_MINUTES', 30),
+    dmEnabled: env('CONVERSATION_DM_ENABLED', 'false') === 'true',
+    temperature: parseFloat(env('CONVERSATION_TEMPERATURE', '0.7')),
+    maxTokens: envInt('CONVERSATION_MAX_TOKENS', 1000),
+  },
   logLevel: env('LOG_LEVEL', 'info'),
 };

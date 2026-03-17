@@ -179,6 +179,25 @@ if (dashboardEnabled) {
 console.log('');
 
 // ============================================
+// 6.5. Modo Conversacional
+// ============================================
+
+console.log(bold('--- Modo Conversacional ---'));
+console.log('');
+console.log(dim('  Permite que o bot responda perguntas livres via @menção no grupo.'));
+
+const enableConversation = await ask('Habilitar modo conversacional? [s/N]: ');
+const conversationEnabled = enableConversation.trim().toLowerCase() === 's';
+
+let dmEnabled = false;
+if (conversationEnabled) {
+  const enableDm = await ask('  Habilitar conversas via DM (mensagem direta)? [s/N]: ');
+  dmEnabled = enableDm.trim().toLowerCase() === 's';
+}
+
+console.log('');
+
+// ============================================
 // 7. Gerar .env
 // ============================================
 
@@ -214,6 +233,14 @@ MEDIA_MAX_SIZE_MB=20
 DASHBOARD_ENABLED=${dashboardEnabled}
 DASHBOARD_PORT=${dashboardPort}
 DASHBOARD_TOKEN=${dashboardToken || 'change-me'}
+
+# --- Modo Conversacional ---
+CONVERSATION_ENABLED=${conversationEnabled}
+CONVERSATION_DM_ENABLED=${dmEnabled}
+CONVERSATION_MAX_TURNS=20
+CONVERSATION_SESSION_TTL_MINUTES=30
+CONVERSATION_TEMPERATURE=0.7
+CONVERSATION_MAX_TOKENS=1000
 
 # --- Logging ---
 LOG_LEVEL=info

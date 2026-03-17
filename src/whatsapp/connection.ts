@@ -30,6 +30,7 @@ const AUTH_DIR = path.resolve(process.cwd(), 'auth_info');
 
 export interface WhatsAppEvents {
   'message:group': (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => void;
+  'message:dm': (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => void;
   'connection:open': () => void;
   'connection:close': (reason: string) => void;
   'qr': (qr: string) => void;
@@ -147,13 +148,24 @@ export class WhatsAppConnection extends EventEmitter {
         // Ignorar mensagens do próprio bot
         if (msg.key.fromMe) continue;
 
-        // Processar apenas mensagens de grupo
         const remoteJid = msg.key.remoteJid;
-        if (!remoteJid || !isJidGroup(remoteJid)) continue;
+        if (!remoteJid) continue;
 
-        const stored = this.parseMessage(msg, remoteJid);
-        if (stored) {
-          this.emit('message:group', stored, msg);
+        // Mensagens de grupo
+        if (isJidGroup(remoteJid)) {
+          const stored = this.parseMessage(msg, remoteJid);
+          if (stored) {
+            this.emit('message:group', stored, msg);
+          }
+          continue;
+        }
+
+        // DMs (mensagens diretas) — apenas se habilitado
+        if (config.conversation.dmEnabled && !isJidGroup(remoteJid)) {
+          const stored = this.parseMessage(msg, remoteJid);
+          if (stored) {
+            this.emit('message:dm', stored, msg);
+          }
         }
       }
     });

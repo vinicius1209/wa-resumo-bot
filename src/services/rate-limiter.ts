@@ -18,9 +18,9 @@ export class RateLimiter implements IRateLimiter {
   private maxRequests: number;
   private windowMs: number;
 
-  constructor() {
-    this.maxRequests = config.rateLimit.maxRequests;
-    this.windowMs = config.rateLimit.windowSeconds * 1000;
+  constructor(maxRequests?: number, windowSeconds?: number) {
+    this.maxRequests = maxRequests ?? config.rateLimit.maxRequests;
+    this.windowMs = (windowSeconds ?? config.rateLimit.windowSeconds) * 1000;
   }
 
   /**

@@ -50,6 +50,26 @@ npm run dev
 
 Todos os comandos também funcionam via menção: `@ResumoBot resumo 3h`
 
+## Modo Conversacional
+
+O bot suporta conversas multi-turn via @menção. Diferente dos comandos, o modo conversacional permite perguntas livres sobre o contexto do grupo.
+
+```env
+CONVERSATION_ENABLED=true
+CONVERSATION_DM_ENABLED=false  # DMs opcionais
+```
+
+**Como funciona:**
+1. Usuário menciona o bot sem comando: `@ResumoBot o que tão falando hoje?`
+2. Bot injeta contexto do grupo (mensagens recentes + sentimento) como grounding
+3. LLM responde com base apenas no contexto real
+4. Sessões multi-turn duram 30min (configurável) — o bot lembra o que já foi conversado
+
+**Controles:**
+- Toggle `conversa` por grupo no dashboard
+- Rate limiting separado (10 turns / 5min)
+- Sessões persistem no SQLite (sobrevivem restart)
+
 ## Dashboard Admin
 
 O bot inclui um dashboard web (React + Tailwind + shadcn/ui) para monitoramento e gestão em tempo real.
@@ -62,8 +82,9 @@ DASHBOARD_TOKEN=seu-token-aqui
 
 **Páginas**:
 - **Overview** — Status, gráficos de uso por hora, tabela de grupos, live feed
-- **Chat** — Interface estilo ChatGPT para executar comandos sem enviar ao WhatsApp
-- **Grupos** — Allow/block, feature toggles por grupo, notas
+- **Chat** — Interface para executar comandos sem enviar ao WhatsApp
+- **Conversas** — Viewer de sessões conversacionais (turns, contexto injetado, status)
+- **Grupos** — Allow/block, feature toggles por grupo (incluindo `conversa`), notas
 - **Config** — Editor de configurações dinâmicas
 
 ### Desenvolvimento do Dashboard
@@ -101,6 +122,12 @@ Todas as variáveis via `.env` (veja `.env.example`):
 | `DASHBOARD_ENABLED` | `false` | Habilitar dashboard admin |
 | `DASHBOARD_PORT` | `3000` | Porta do dashboard |
 | `DASHBOARD_TOKEN` | — | Token de autenticação do dashboard |
+| `CONVERSATION_ENABLED` | `false` | Habilitar modo conversacional |
+| `CONVERSATION_MAX_TURNS` | `20` | Máx. turns por sessão |
+| `CONVERSATION_SESSION_TTL_MINUTES` | `30` | Expiração da sessão (min) |
+| `CONVERSATION_DM_ENABLED` | `false` | Conversas via DM |
+| `CONVERSATION_TEMPERATURE` | `0.7` | Temperatura LLM para conversas |
+| `CONVERSATION_MAX_TOKENS` | `1000` | Máx. tokens por resposta |
 
 ## Arquitetura
 

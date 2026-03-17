@@ -14,7 +14,7 @@ import { WhatsAppConnection } from './whatsapp';
 import { SQLiteStorage } from './storage';
 import { createLLMProvider } from './llm';
 import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand } from './commands';
-import { RateLimiter, SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, eventBus } from './services';
+import { RateLimiter, SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, eventBus } from './services';
 import { startDashboard, stopDashboard } from './dashboard/server';
 import { StoredMessage } from './types';
 import { proto } from '@whiskeysockets/baileys';
@@ -95,6 +95,16 @@ async function main(): Promise<void> {
   catchupService.initTable(storage.getDatabase());
   logger.info('✓ Serviço Fase 5 inicializado (Catchup)');
 
+  // 11.5. Conversation Service (modo conversacional)
+  let conversationService: ConversationService | null = null;
+  let conversationRateLimiter: RateLimiter | null = null;
+  if (config.conversation.enabled) {
+    conversationService = new ConversationService(storage, llmProvider, sentimentService, analytics);
+    conversationService.initTable(storage.getDatabase());
+    conversationRateLimiter = new RateLimiter(10, config.rateLimit.windowSeconds);
+    logger.info('✓ Modo conversacional habilitado');
+  }
+
   // 12. Comandos
   const commandHandler = new CommandHandler();
   commandHandler.setAnalytics(analytics);
@@ -155,6 +165,7 @@ async function main(): Promise<void> {
         dynamicConfigService: dynamicConfig,
         commandHandler,
         storage,
+        conversationService: conversationService ?? undefined,
       });
     } catch (error) {
       logger.error({ error }, 'Erro ao iniciar dashboard');
@@ -241,15 +252,51 @@ async function main(): Promise<void> {
       await whatsapp.sendMessage(message.groupId, text);
     };
 
-    await commandHandler.handleMessage(message, reply);
+    const result = await commandHandler.handleMessage(message, reply);
+
+    // Modo conversacional: menção ao bot sem comando válido
+    if (
+      !result.handled
+      && result.isBotMention
+      && result.mentionText
+      && conversationService
+      && conversationRateLimiter
+      && dynamicConfig.isFeatureEnabled(message.groupId, 'conversa')
+    ) {
+      const rateCheck = conversationRateLimiter.consume(`conv:${message.groupId}`);
+      if (!rateCheck.allowed) {
+        await reply(`⏳ Aguarde ${rateCheck.retryAfterSeconds}s para continuar a conversa.`);
+      } else {
+        await conversationService.handleConversation(
+          message.groupId, message.senderId, message.senderName,
+          result.mentionText, reply,
+        );
+      }
+    }
   });
+
+  // DMs conversacionais (se habilitado)
+  if (conversationService && config.conversation.dmEnabled) {
+    whatsapp.on('message:dm', async (message: StoredMessage) => {
+      const reply = async (text: string) => {
+        await whatsapp.sendMessage(message.senderId, text);
+      };
+      await conversationService!.handleConversation(
+        'dm', message.senderId, message.senderName,
+        message.content, reply,
+      );
+    });
+    logger.info('✓ DMs conversacionais habilitadas');
+  }
 
   // 10. Conectar
   await whatsapp.connect();
 
-  // 11. Limpeza periódica de rate limit (a cada 10 min)
+  // 11. Limpeza periódica de rate limit + sessões (a cada 10 min)
   setInterval(() => {
     rateLimiter.cleanup();
+    conversationRateLimiter?.cleanup();
+    conversationService?.cleanup();
   }, 10 * 60 * 1000);
 
   // 12. Limpeza de mensagens antigas (a cada 24h, remove msgs > 7 dias)

@@ -4,7 +4,7 @@
  * Plug and play: basta ter OPENAI_API_KEY no .env.
  */
 import OpenAI from 'openai';
-import { ILLMProvider, LLMSummaryRequest, LLMSummaryResponse } from '../types';
+import { ILLMProvider, LLMSummaryRequest, LLMSummaryResponse, LLMChatRequest, LLMChatResponse } from '../types';
 import { config } from '../config';
 import { SYSTEM_PROMPT, formatMessagesForLLM } from './base-prompt';
 
@@ -42,6 +42,30 @@ export class OpenAIProvider implements ILLMProvider {
 
     return {
       summary,
+      tokensUsed: {
+        input: response.usage?.prompt_tokens ?? 0,
+        output: response.usage?.completion_tokens ?? 0,
+      },
+      provider: this.name,
+      model: this.model,
+    };
+  }
+
+  async chat(request: LLMChatRequest): Promise<LLMChatResponse> {
+    const messages = request.messages.map((m) => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages,
+      temperature: request.temperature ?? config.conversation.temperature,
+      max_tokens: request.maxTokens ?? config.conversation.maxTokens,
+    });
+
+    return {
+      content: response.choices[0]?.message?.content || 'Não consegui gerar uma resposta.',
       tokensUsed: {
         input: response.usage?.prompt_tokens ?? 0,
         output: response.usage?.completion_tokens ?? 0,
