@@ -49,6 +49,10 @@ class EventBus extends EventEmitter {
   emitConversation(groupId: string, senderName: string, durationMs: number, success: boolean): void {
     this.emitBotEvent('conversation', { groupId, senderName, durationMs, success });
   }
+
+  emitPodcast(groupId: string, durationSeconds: number, ttsProvider: string, durationMs: number): void {
+    this.emitBotEvent('podcast', { groupId, durationSeconds, ttsProvider, durationMs });
+  }
 }
 
 /** Instância singleton do EventBus */

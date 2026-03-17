@@ -11,3 +11,4 @@ export { CompromissosCommand } from './compromissos-command';
 export { TemperaturaCommand } from './temperatura-command';
 export { PersonaCommand } from './persona-command';
 export { MePerdiCommand } from './meperdi-command';
+export { PodcastCommand } from './podcast-command';

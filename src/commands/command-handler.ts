@@ -20,6 +20,7 @@ const logger = pino({ level: config.logLevel });
 const RATE_LIMITED_COMMANDS = new Set([
   'resumo', 'summary', 'retro', 'retrospectiva',
   'persona', 'perfil', 'meperdi', 'catchup',
+  'podcast', 'audio', 'audioresumo',
 ]);
 
 export interface HandleResult {
@@ -88,14 +89,15 @@ export class CommandHandler {
    */
   async handleMessage(
     message: StoredMessage,
-    reply: (text: string) => Promise<void>
+    reply: (text: string) => Promise<void>,
+    replyAudio?: (audio: Buffer, durationSeconds: number) => Promise<void>
   ): Promise<HandleResult> {
     const content = message.content.trim();
 
     // Tentar detectar comando por prefixo
     const prefixResult = this.parsePrefix(content);
     if (prefixResult) {
-      const handled = await this.executeCommand(prefixResult.command, prefixResult.args, message, reply);
+      const handled = await this.executeCommand(prefixResult.command, prefixResult.args, message, reply, replyAudio);
       return { handled, isBotMention: false };
     }
 
@@ -105,7 +107,7 @@ export class CommandHandler {
       // Verificar se o "comando" extraído é realmente um comando registrado
       const command = this.commands.get(mentionResult.command);
       if (command) {
-        const handled = await this.executeCommand(mentionResult.command, mentionResult.args, message, reply);
+        const handled = await this.executeCommand(mentionResult.command, mentionResult.args, message, reply, replyAudio);
         return { handled, isBotMention: true };
       }
 
@@ -188,7 +190,8 @@ export class CommandHandler {
     commandName: string,
     args: string,
     message: StoredMessage,
-    reply: (text: string) => Promise<void>
+    reply: (text: string) => Promise<void>,
+    replyAudio?: (audio: Buffer, durationSeconds: number) => Promise<void>
   ): Promise<boolean> {
     const command = this.commands.get(commandName);
     if (!command) {
@@ -211,6 +214,7 @@ export class CommandHandler {
       senderName: message.senderName,
       args,
       reply,
+      replyAudio,
     };
 
     const startMs = Date.now();

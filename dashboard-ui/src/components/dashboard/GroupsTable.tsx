@@ -23,6 +23,9 @@ const FEATURES = [
   'meperdi',
   'compromissos',
   'conversa',
+  'palavras',
+  'treta',
+  'podcast',
 ] as const
 
 function parseFeatures(json: string | null): Record<string, boolean> {

@@ -150,6 +150,8 @@ export interface CommandContext {
   args: string;
   /** Função para responder no grupo */
   reply: (text: string) => Promise<void>;
+  /** Função para responder com áudio (voice note OGG Opus) */
+  replyAudio?: (audio: Buffer, durationSeconds: number) => Promise<void>;
 }
 
 export interface ICommand {
@@ -159,6 +161,8 @@ export interface ICommand {
   readonly aliases: string[];
   /** Descrição do comando */
   readonly description: string;
+  /** Exemplo de uso exibido no /ajuda (opcional) */
+  readonly usage?: string;
 
   /** Executa o comando */
   execute(ctx: CommandContext): Promise<void>;
@@ -176,6 +180,40 @@ export interface IMediaProcessor {
 
   /** Extrai frame de vídeo e descreve via visão */
   processVideo(buffer: Buffer, mimeType: string): Promise<string>;
+}
+
+// ============================================
+// TTS Provider — contrato plug and play
+// ============================================
+export interface PodcastLine {
+  speaker: 'host1' | 'host2';
+  text: string;
+}
+
+export interface TTSRequest {
+  script: PodcastLine[];
+}
+
+export interface TTSResponse {
+  /** OGG Opus audio buffer, pronto para WhatsApp */
+  audioBuffer: Buffer;
+  /** Duração em segundos */
+  durationSeconds: number;
+  /** Nome do provider */
+  provider: string;
+  /** Custo estimado em USD */
+  estimatedCostUsd: number;
+}
+
+export interface ITTSProvider {
+  /** Nome do provider (ex: "gemini", "openai") */
+  readonly name: string;
+
+  /** Sintetiza áudio a partir de um script de podcast */
+  synthesize(request: TTSRequest): Promise<TTSResponse>;
+
+  /** Verifica se o provider está configurado e funcional */
+  healthCheck(): Promise<boolean>;
 }
 
 // ============================================
@@ -226,6 +264,18 @@ export interface AppConfig {
     dmEnabled: boolean;
     temperature: number;
     maxTokens: number;
+  };
+  sentiment: {
+    autoReact: boolean;
+  };
+  podcast: {
+    enabled: boolean;
+    ttsProvider: 'gemini' | 'openai';
+    googleApiKey: string;
+    geminiModel: string;
+    host1Voice: string;
+    host2Voice: string;
+    maxDurationMinutes: number;
   };
   logLevel: string;
 }

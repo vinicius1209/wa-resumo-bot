@@ -15,4 +15,5 @@ export { PersonaService } from './persona-service';
 export { CatchupService } from './catchup-service';
 export { DynamicConfigService } from './dynamic-config-service';
 export { ConversationService } from './conversation-service';
+export { PodcastService } from './podcast-service';
 export { eventBus } from './event-bus';

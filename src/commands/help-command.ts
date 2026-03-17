@@ -14,7 +14,7 @@ export class HelpCommand implements ICommand {
   async execute(ctx: CommandContext): Promise<void> {
     const prefix = config.bot.commandPrefix;
     const lines = [
-      `🤖 *${config.bot.name}* — Comandos disponíveis:\n`,
+      `*${config.bot.name}* — Comandos disponíveis:\n`,
     ];
 
     for (const cmd of this.commands) {
@@ -22,6 +22,9 @@ export class HelpCommand implements ICommand {
         ? ` (${cmd.aliases.map((a) => prefix + a).join(', ')})`
         : '';
       lines.push(`• *${prefix}${cmd.name}*${aliases} — ${cmd.description}`);
+      if (cmd.usage) {
+        lines.push(`   _${cmd.usage}_`);
+      }
     }
 
     lines.push(`\nVocê também pode me mencionar: _@${config.bot.name} resumo 2h_`);

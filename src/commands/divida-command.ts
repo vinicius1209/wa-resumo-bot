@@ -14,6 +14,7 @@ export class DividaCommand implements ICommand {
   readonly name = 'divida';
   readonly aliases = ['dividas', 'dívida', 'dívidas', 'debt'];
   readonly description = 'Gerencia dívidas entre membros do grupo';
+  readonly usage = '/divida João 50 pizza';
 
   constructor(private debtService: DebtService) {}
 

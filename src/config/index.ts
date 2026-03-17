@@ -59,5 +59,17 @@ export const config: AppConfig = {
     temperature: parseFloat(env('CONVERSATION_TEMPERATURE', '0.7')),
     maxTokens: envInt('CONVERSATION_MAX_TOKENS', 1000),
   },
+  sentiment: {
+    autoReact: env('SENTIMENT_AUTO_REACT', 'false') === 'true',
+  },
+  podcast: {
+    enabled: env('PODCAST_ENABLED', 'false') === 'true',
+    ttsProvider: env('TTS_PROVIDER', 'gemini') as 'gemini' | 'openai',
+    googleApiKey: env('GOOGLE_TTS_API_KEY'),
+    geminiModel: env('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
+    host1Voice: env('PODCAST_HOST1_VOICE', 'Kore'),
+    host2Voice: env('PODCAST_HOST2_VOICE', 'Puck'),
+    maxDurationMinutes: envInt('PODCAST_MAX_DURATION_MINUTES', 5),
+  },
   logLevel: env('LOG_LEVEL', 'info'),
 };

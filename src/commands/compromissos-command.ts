@@ -13,6 +13,7 @@ export class CompromissosCommand implements ICommand {
   readonly name = 'compromissos';
   readonly aliases = ['compromisso', 'agenda', 'lembrete'];
   readonly description = 'Lista e gerencia compromissos do grupo';
+  readonly usage = '/compromissos add Churrasco sexta 20h';
 
   constructor(private commitmentService: CommitmentService) {}
 

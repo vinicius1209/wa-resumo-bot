@@ -264,6 +264,21 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * Envia um áudio como voice note (push-to-talk) para um chat.
+   */
+  async sendAudio(jid: string, audioBuffer: Buffer, durationSeconds: number): Promise<void> {
+    if (!this.socket) {
+      throw new Error('WhatsApp não conectado');
+    }
+    await this.socket.sendMessage(jid, {
+      audio: audioBuffer,
+      mimetype: 'audio/ogg; codecs=opus',
+      ptt: true,
+      seconds: Math.ceil(durationSeconds),
+    });
+  }
+
+  /**
    * Baixa a mídia de uma mensagem como Buffer.
    */
   async downloadMedia(rawMessage: proto.IWebMessageInfo): Promise<Buffer | null> {

@@ -14,11 +14,17 @@ export class TemperaturaCommand implements ICommand {
   async execute(ctx: CommandContext): Promise<void> {
     const { score, label } = this.sentimentService.getTemperature(ctx.groupId);
 
-    const lines = [
-      '🌡️ *Temperatura do grupo*',
-      '',
-      `${label} (score: ${score}/${15})`,
-    ];
+    const lines = [`${label} (score: ${score})`];
+
+    const heated = this.sentimentService.getHeatedMessages(ctx.groupId, 3);
+    if (heated.length > 0) {
+      lines.push('');
+      lines.push('*Quem ta agitando:*');
+      for (const msg of heated) {
+        const preview = msg.content.length > 60 ? msg.content.slice(0, 60) + '...' : msg.content;
+        lines.push(`- ${msg.senderName}: _"${preview}"_`);
+      }
+    }
 
     await ctx.reply(lines.join('\n'));
   }

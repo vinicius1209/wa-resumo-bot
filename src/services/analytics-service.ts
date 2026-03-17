@@ -23,10 +23,12 @@ const PRICING: Record<string, { input: number; output: number } | { perMinute: n
   'gpt-4.1-mini': { input: 0.40 / 1_000_000, output: 1.60 / 1_000_000 },
   'gpt-4.1-nano': { input: 0.10 / 1_000_000, output: 0.40 / 1_000_000 },
   'claude-opus-4-20250514': { input: 15.00 / 1_000_000, output: 75.00 / 1_000_000 },
+  'gemini-2.5-flash-preview-tts': { input: 0.50 / 1_000_000, output: 10.00 / 1_000_000 },
+  'tts-1': { input: 15.00 / 1_000_000, output: 0 },
 };
 
 export interface AnalyticsEvent {
-  eventType: 'command' | 'llm_call' | 'media_process' | 'error' | 'conversation';
+  eventType: 'command' | 'llm_call' | 'media_process' | 'error' | 'conversation' | 'sentiment_react';
   groupId?: string;
   senderId?: string;
   commandName?: string;

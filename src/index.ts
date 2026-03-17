@@ -13,8 +13,9 @@ import { config } from './config';
 import { WhatsAppConnection } from './whatsapp';
 import { SQLiteStorage } from './storage';
 import { createLLMProvider } from './llm';
-import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand } from './commands';
-import { RateLimiter, SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, eventBus } from './services';
+import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand, PodcastCommand } from './commands';
+import { RateLimiter, SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, PodcastService, eventBus } from './services';
+import { createTTSProvider } from './tts';
 import { startDashboard, stopDashboard } from './dashboard/server';
 import { StoredMessage } from './types';
 import { proto } from '@whiskeysockets/baileys';
@@ -105,6 +106,16 @@ async function main(): Promise<void> {
     logger.info('✓ Modo conversacional habilitado');
   }
 
+  // 11.6. Podcast Service (resumo em áudio)
+  let podcastService: PodcastService | null = null;
+  if (config.podcast.enabled) {
+    const ttsProvider = createTTSProvider();
+    podcastService = new PodcastService(storage, llmProvider, ttsProvider);
+    podcastService.initTable(storage.getDatabase());
+    podcastService.setAnalytics(analytics);
+    logger.info({ ttsProvider: ttsProvider.name }, '✓ Podcast habilitado');
+  }
+
   // 12. Comandos
   const commandHandler = new CommandHandler();
   commandHandler.setAnalytics(analytics);
@@ -120,6 +131,9 @@ async function main(): Promise<void> {
   commandHandler.register(new TemperaturaCommand(sentimentService));
   commandHandler.register(new PersonaCommand(personaService, storage));
   commandHandler.register(new MePerdiCommand(catchupService, storage, summaryService));
+  if (podcastService) {
+    commandHandler.register(new PodcastCommand(podcastService));
+  }
   commandHandler.register(new HelpCommand(commandHandler.getUniqueCommands()));
   logger.info(
     { commands: commandHandler.getUniqueCommands().map((c) => c.name) },
@@ -221,15 +235,84 @@ async function main(): Promise<void> {
     // Atualizar atividade do membro (para catchup)
     catchupService.updateActivity(message.groupId, message.senderId, message.timestamp);
 
+    // Auto-detecção de compromissos (fire-and-forget, não bloqueia)
+    if (
+      message.content
+      && !message.content.startsWith(config.bot.commandPrefix)
+      && dynamicConfig.isFeatureEnabled(message.groupId, 'compromissos')
+    ) {
+      const detection = commitmentService.detectDateMention(message.content);
+      if (detection.hasDate) {
+        const eventDate = commitmentService.parseDateFromText(message.content);
+        if (eventDate && eventDate.getTime() > Date.now()) {
+          // Extrair descrição: texto sem a parte da data
+          const description = message.content.replace(detection.rawMatch, '').trim()
+            || message.content;
+          commitmentService.addCommitment(
+            message.groupId, description, eventDate,
+            message.senderId, message.senderName, message.id,
+          );
+          const dateStr = eventDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          const timeStr = eventDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          whatsapp.sendMessage(
+            message.groupId,
+            `Compromisso detectado: *${description}* - ${dateStr} às ${timeStr}\n_Use /compromissos pra ver todos_`,
+          ).catch((error) => {
+            logger.warn({ error }, 'Erro ao confirmar compromisso auto-detectado');
+          });
+        }
+      }
+    }
+
     // Alimentar detector de sentimento
     sentimentService.feedMessage(message);
     const temp = sentimentService.getTemperature(message.groupId);
     eventBus.emitSentiment(message.groupId, temp.score, temp.label);
+
+    // Auto-provocação via LLM quando o grupo esquenta (opt-in)
+    if (
+      config.sentiment.autoReact
+      && llmProvider.chat
+      && dynamicConfig.isFeatureEnabled(message.groupId, 'treta')
+      && sentimentService.shouldReact(message.groupId)
+    ) {
+      sentimentService.markReacted(message.groupId);
+      const heatedMsgs = sentimentService.getHeatedMessages(message.groupId, 8);
+      const context = heatedMsgs
+        .map((m) => `${m.senderName}: ${m.content}`)
+        .join('\n');
+      try {
+        const reaction = await llmProvider.chat({
+          messages: [
+            {
+              role: 'system',
+              content: `Você é um bot zoeiro de grupo de WhatsApp. O grupo está esquentando com uma discussão/treta. Sua missão é mandar UMA mensagem curta (máximo 2 frases) para agitar a galera de forma engraçada e provocativa, mas sem ser ofensivo ou tomar partido. Use gírias brasileiras, humor, e referências ao que está sendo discutido. Seja como aquele amigo que joga lenha na fogueira rindo. Responda APENAS com a mensagem, sem aspas nem prefixo.`,
+            },
+            {
+              role: 'user',
+              content: `A treta tá rolando:\n\n${context}\n\nManda uma zoeira pra agitar!`,
+            },
+          ],
+          temperature: 0.9,
+          maxTokens: 150,
+        });
+        await whatsapp.sendMessage(message.groupId, `🍿 ${reaction.content}`);
+        analytics.track({
+          eventType: 'sentiment_react',
+          groupId: message.groupId,
+          metadata: { score: temp.score, label: temp.label },
+        });
+      } catch (error) {
+        logger.warn({ error, groupId: message.groupId }, 'Erro ao gerar reação de treta');
+      }
+    }
+
+    // Alerta automático quando pega fogo
     if (sentimentService.shouldAlert(message.groupId)) {
       sentimentService.markAlerted(message.groupId);
       await whatsapp.sendMessage(
         message.groupId,
-        `🌡️ *Alerta:* O grupo está ${temp.label}! (score: ${temp.score})\nCalma, galera! 😅`
+        `Epa, o grupo ta ${temp.label}! Bora respirar fundo, galera.`
       );
     }
 
@@ -251,8 +334,11 @@ async function main(): Promise<void> {
     const reply = async (text: string) => {
       await whatsapp.sendMessage(message.groupId, text);
     };
+    const replyAudio = async (audio: Buffer, seconds: number) => {
+      await whatsapp.sendAudio(message.groupId, audio, seconds);
+    };
 
-    const result = await commandHandler.handleMessage(message, reply);
+    const result = await commandHandler.handleMessage(message, reply, replyAudio);
 
     // Modo conversacional: menção ao bot sem comando válido
     if (
@@ -297,6 +383,7 @@ async function main(): Promise<void> {
     rateLimiter.cleanup();
     conversationRateLimiter?.cleanup();
     conversationService?.cleanup();
+    podcastService?.cleanup();
   }, 10 * 60 * 1000);
 
   // 12. Limpeza de mensagens antigas (a cada 24h, remove msgs > 7 dias)
