@@ -48,6 +48,9 @@ export const config: AppConfig = {
     port: envInt('DASHBOARD_PORT', 3000),
     token: env('DASHBOARD_TOKEN', 'change-me'),
   },
+  wordOfDay: {
+    autoSend: env('WORD_OF_DAY_AUTO', 'false') === 'true',
+  },
   conversation: {
     enabled: env('CONVERSATION_ENABLED', 'false') === 'true',
     maxTurns: envInt('CONVERSATION_MAX_TURNS', 20),

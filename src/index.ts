@@ -326,42 +326,48 @@ async function main(): Promise<void> {
     }
   }, 30 * 60 * 1000);
 
-  // Palavra do dia — scheduler diário às 23h
-  const scheduleWordOfDay = () => {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0);
-    if (target.getTime() <= now.getTime()) {
-      target.setDate(target.getDate() + 1);
-    }
-    const msUntil = target.getTime() - now.getTime();
-
-    setTimeout(async () => {
-      try {
-        // Buscar grupos ativos (que têm mensagens hoje)
-        const startOfDay = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
-        const endOfDay = Math.floor(Date.now() / 1000);
-        const db = storage.getDatabase();
-        const groups = db.prepare(
-          'SELECT DISTINCT group_id FROM messages WHERE timestamp >= ? AND timestamp <= ?'
-        ).all(startOfDay, endOfDay) as Array<{ group_id: string }>;
-
-        for (const { group_id } of groups) {
-          const result = await wordOfDayService.generateWordOfDay(group_id, storage);
-          if (result) {
-            const text = `🏆 *Palavra do dia:* _${result.word}_ (mencionada ${result.count}x por ${result.uniqueSenders} pessoas)`;
-            await whatsapp.sendMessage(group_id, text);
-          }
-        }
-      } catch (error) {
-        logger.error({ error }, 'Erro no scheduler palavra do dia');
+  // Palavra do dia — scheduler diário às 23h (apenas se habilitado)
+  if (config.wordOfDay.autoSend) {
+    const scheduleWordOfDay = () => {
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0);
+      if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
       }
-      // Re-agendar para amanhã
-      scheduleWordOfDay();
-    }, msUntil);
+      const msUntil = target.getTime() - now.getTime();
 
-    logger.info({ nextRunIn: `${Math.round(msUntil / 60000)}min` }, '✓ Palavra do dia agendada');
-  };
-  scheduleWordOfDay();
+      setTimeout(async () => {
+        try {
+          const startOfDay = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+          const endOfDay = Math.floor(Date.now() / 1000);
+          const db = storage.getDatabase();
+          const groups = db.prepare(
+            'SELECT DISTINCT group_id FROM messages WHERE timestamp >= ? AND timestamp <= ?'
+          ).all(startOfDay, endOfDay) as Array<{ group_id: string }>;
+
+          for (const { group_id } of groups) {
+            // Respeitar allowlist e feature toggle
+            if (!dynamicConfig.isGroupAllowed(group_id)) continue;
+            if (!dynamicConfig.isFeatureEnabled(group_id, 'palavras')) continue;
+
+            const result = await wordOfDayService.generateWordOfDay(group_id, storage);
+            if (result) {
+              const text = `🏆 *Palavra do dia:* _${result.word}_ (mencionada ${result.count}x por ${result.uniqueSenders} pessoas)`;
+              await whatsapp.sendMessage(group_id, text);
+            }
+          }
+        } catch (error) {
+          logger.error({ error }, 'Erro no scheduler palavra do dia');
+        }
+        scheduleWordOfDay();
+      }, msUntil);
+
+      logger.info({ nextRunIn: `${Math.round(msUntil / 60000)}min` }, '✓ Palavra do dia agendada');
+    };
+    scheduleWordOfDay();
+  } else {
+    logger.info('Palavra do dia automática desabilitada (use /palavras manualmente)');
+  }
 
   // Graceful shutdown
   const shutdown = async () => {

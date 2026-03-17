@@ -216,6 +216,9 @@ export interface AppConfig {
     port: number;
     token: string;
   };
+  wordOfDay: {
+    autoSend: boolean;
+  };
   conversation: {
     enabled: boolean;
     maxTurns: number;
