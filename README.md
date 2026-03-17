@@ -122,6 +122,7 @@ Todas as variáveis via `.env` (veja `.env.example`):
 | `DASHBOARD_ENABLED` | `false` | Habilitar dashboard admin |
 | `DASHBOARD_PORT` | `3000` | Porta do dashboard |
 | `DASHBOARD_TOKEN` | — | Token de autenticação do dashboard |
+| `WORD_OF_DAY_AUTO` | `false` | Enviar palavra do dia às 23h automaticamente |
 | `CONVERSATION_ENABLED` | `false` | Habilitar modo conversacional |
 | `CONVERSATION_MAX_TURNS` | `20` | Máx. turns por sessão |
 | `CONVERSATION_SESSION_TTL_MINUTES` | `30` | Expiração da sessão (min) |
