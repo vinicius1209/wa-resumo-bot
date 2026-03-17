@@ -7,7 +7,7 @@
  * - Chamar o LLM provider
  * - Formatar a resposta final
  */
-import { IMessageStorage, ILLMProvider, IRateLimiter, StoredMessage } from '../types';
+import { IMessageStorage, ILLMProvider, StoredMessage } from '../types';
 import { AnalyticsService } from './analytics-service';
 import { eventBus } from './event-bus';
 import { config } from '../config';
@@ -29,7 +29,6 @@ export class SummaryService {
   constructor(
     private storage: IMessageStorage,
     private llmProvider: ILLMProvider,
-    private rateLimiter: IRateLimiter
   ) {}
 
   setAnalytics(analytics: AnalyticsService): void {
@@ -48,16 +47,7 @@ export class SummaryService {
     senderId: string,
     args: string
   ): Promise<SummaryResult> {
-    // 1. Verificar rate limit (por grupo)
-    const rateCheck = this.rateLimiter.consume(groupId);
-    if (!rateCheck.allowed) {
-      return {
-        success: false,
-        text: `⏳ Calma! Aguarde ${rateCheck.retryAfterSeconds}s antes de pedir outro resumo.`,
-      };
-    }
-
-    // 2. Buscar mensagens
+    // 1. Buscar mensagens
     let messages: StoredMessage[];
     try {
       messages = await this.fetchMessages(groupId, args);

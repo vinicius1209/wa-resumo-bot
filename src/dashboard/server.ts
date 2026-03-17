@@ -70,6 +70,14 @@ export async function startDashboard(services: DashboardServices): Promise<void>
     prefix: '/',
   });
 
+  // SPA fallback — rotas do React Router retornam index.html
+  server.setNotFoundHandler(async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.url.startsWith('/api/') || request.url.startsWith('/ws')) {
+      return reply.status(404).send({ error: 'Not found' });
+    }
+    return reply.sendFile('index.html');
+  });
+
   // Start
   await server.listen({ port: dashboard.port, host: '0.0.0.0' });
   logger.info({ port: dashboard.port }, '✓ Dashboard admin rodando');

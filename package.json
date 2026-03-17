@@ -4,11 +4,14 @@
   "description": "Bot de WhatsApp que monitora conversas e gera resumos fiéis usando LLMs (OpenAI/Anthropic). Inclui quiz, retro, dívidas, sentimento e dashboard admin.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run dashboard:build && tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "dev:watch": "nodemon --exec ts-node src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "setup": "node scripts/setup.mjs",
+    "dashboard:dev": "cd dashboard-ui && npm run dev",
+    "dashboard:build": "cd dashboard-ui && npm run build"
   },
   "repository": {
     "type": "git",

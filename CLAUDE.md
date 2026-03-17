@@ -12,9 +12,12 @@ WhatsApp group chat bot with LLMs (OpenAI or Anthropic Claude) via the Baileys l
 npm install          # Install dependencies
 npm run dev:watch    # Development with file-watching (nodemon + ts-node)
 npm run dev          # Run once via ts-node
-npm run build        # Compile to dist/
+npm run build        # Build dashboard + compile backend to dist/
 npm start            # Run compiled output (requires build first)
-npx tsc --noEmit     # Type-check without emitting
+npx tsc --noEmit     # Type-check backend without emitting
+npm run setup        # Interactive setup wizard for first-time config
+npm run dashboard:dev   # Vite dev server for dashboard (port 5173, proxies API to 3000)
+npm run dashboard:build # Build React dashboard to src/dashboard/public/
 ```
 
 There are no tests or linting configured.

@@ -14,19 +14,20 @@ Bot de WhatsApp que monitora conversas de grupo e gera resumos fiéis usando LLM
 
 ```bash
 # 1. Clonar e instalar
-git clone https://github.com/viniciusmachado/wa-resumo-bot.git
+git clone https://github.com/vinicius1209/wa-resumo-bot.git
 cd wa-resumo-bot
 npm install
 
-# 2. Configurar
-cp .env.example .env
-# Edite o .env com suas chaves de API
+# 2. Configurar (wizard interativo)
+npm run setup
 
 # 3. Rodar
 npm run dev
 
 # 4. Escaneie o QR Code no terminal com seu WhatsApp
 ```
+
+> O wizard `npm run setup` verifica pré-requisitos, configura o LLM provider, gera o token do dashboard e cria o `.env` automaticamente. Para configuração manual, copie `.env.example` para `.env`.
 
 > **Pré-requisitos**: Node.js 18+, `ffmpeg` instalado (para processamento de vídeos)
 
@@ -51,7 +52,7 @@ Todos os comandos também funcionam via menção: `@ResumoBot resumo 3h`
 
 ## Dashboard Admin
 
-O bot inclui um dashboard web para monitoramento e gestão em tempo real.
+O bot inclui um dashboard web (React + Tailwind + shadcn/ui) para monitoramento e gestão em tempo real.
 
 ```env
 DASHBOARD_ENABLED=true
@@ -59,7 +60,24 @@ DASHBOARD_PORT=3000
 DASHBOARD_TOKEN=seu-token-aqui
 ```
 
-**Páginas**: Overview com gráficos, Gestão de Grupos (allow/block, feature toggles), Live Feed (WebSocket), Custos por modelo/provider, Configuração dinâmica.
+**Páginas**:
+- **Overview** — Status, gráficos de uso por hora, tabela de grupos, live feed
+- **Chat** — Interface estilo ChatGPT para executar comandos sem enviar ao WhatsApp
+- **Grupos** — Allow/block, feature toggles por grupo, notas
+- **Config** — Editor de configurações dinâmicas
+
+### Desenvolvimento do Dashboard
+
+```bash
+# Backend (terminal 1)
+npm run dev
+
+# Frontend com hot-reload (terminal 2)
+npm run dashboard:dev
+
+# Build para produção
+npm run dashboard:build
+```
 
 ## Configuração
 
@@ -96,11 +114,15 @@ src/
 ├── llm/                      # OpenAI + Anthropic providers
 ├── commands/                 # 12 comandos (ICommand)
 ├── services/                 # 18 serviços (analytics, sentiment, quiz, etc.)
-└── dashboard/                # Fastify server + WebSocket + frontend
-    ├── server.ts             # HTTP server com auth Bearer
-    ├── api.ts                # REST API (13 rotas)
-    ├── websocket.ts          # Real-time events
-    └── public/               # Frontend vanilla (HTML/CSS/JS + Chart.js)
+├── dashboard/                # Fastify server + WebSocket
+│   ├── server.ts             # HTTP server com auth Bearer
+│   ├── api.ts                # REST API (13 rotas)
+│   ├── websocket.ts          # Real-time events
+│   └── public/               # Build output (gerado pelo dashboard-ui)
+dashboard-ui/                     # Frontend React (separado)
+├── src/pages/                # 4 páginas (Overview, Chat, Groups, Settings)
+├── src/components/           # shadcn/ui + componentes custom
+└── vite.config.ts            # Build → src/dashboard/public/
 ```
 
 ### Design por interfaces
@@ -151,7 +173,7 @@ WhatsApp → Baileys → connection.ts (parse)
 - **WhatsApp**: [Baileys](https://github.com/WhiskeySockets/Baileys) (conexão direta, zero custo)
 - **Storage**: SQLite via better-sqlite3 (WAL mode)
 - **LLMs**: OpenAI SDK + Anthropic SDK
-- **Dashboard**: Fastify + WebSocket + Chart.js
+- **Dashboard**: Fastify + WebSocket + React + Tailwind + shadcn/ui + Recharts
 - **Logging**: Pino (structured logging)
 
 ## Proteções

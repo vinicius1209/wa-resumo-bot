@@ -105,14 +105,15 @@ export class DynamicConfigService {
 
   /**
    * Garante que o grupo existe na tabela group_settings (auto-registro).
-   * Se já existir, atualiza o nome caso esteja null.
+   * Novos grupos entram como bloqueados (allowed=0) por padrão — opt-in.
+   * Grupos já registrados NÃO têm o campo allowed sobrescrito.
    */
   ensureGroupExists(groupId: string, groupName?: string): void {
     if (!this.db) return;
 
     this.db.prepare(`
       INSERT INTO group_settings (group_id, group_name, allowed)
-      VALUES (?, ?, 1)
+      VALUES (?, ?, 0)
       ON CONFLICT(group_id) DO UPDATE SET
         group_name = COALESCE(excluded.group_name, group_settings.group_name),
         updated_at = unixepoch()
@@ -121,17 +122,16 @@ export class DynamicConfigService {
 
   /**
    * Verifica se um grupo está permitido.
-   * Retorna true se o grupo tem allowed=1 ou se não há registro (default allow).
+   * Sem registro = bloqueado por padrão (opt-in).
    */
   isGroupAllowed(groupId: string): boolean {
-    if (!this.db) return true;
+    if (!this.db) return false;
 
     const row = this.db.prepare(
       'SELECT allowed FROM group_settings WHERE group_id = ?'
     ).get(groupId) as { allowed: number } | undefined;
 
-    // Sem registro = permitido por padrão
-    if (!row) return true;
+    if (!row) return false;
     return row.allowed === 1;
   }
 

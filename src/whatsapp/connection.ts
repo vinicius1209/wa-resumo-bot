@@ -66,6 +66,23 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * Busca todos os grupos dos quais o bot participa.
+   * Retorna lista de { id, name } para registro no dashboard.
+   */
+  async fetchAllGroups(): Promise<{ id: string; name: string }[]> {
+    if (!this.socket) return [];
+    try {
+      const groups = await this.socket.groupFetchAllParticipating();
+      return Object.values(groups).map((g) => {
+        this.groupNameCache.set(g.id, g.subject);
+        return { id: g.id, name: g.subject };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Inicia a conexão com WhatsApp Web.
    * Exibe QR code no terminal para autenticação.
    */

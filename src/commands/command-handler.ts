@@ -8,7 +8,7 @@
  * Plug and play: para adicionar um comando novo,
  * crie uma classe ICommand e registre via .register()
  */
-import { ICommand, CommandContext, StoredMessage } from '../types';
+import { ICommand, CommandContext, StoredMessage, IRateLimiter } from '../types';
 import { config } from '../config';
 import { AnalyticsService } from '../services/analytics-service';
 import { eventBus } from '../services/event-bus';
@@ -16,15 +16,29 @@ import pino from 'pino';
 
 const logger = pino({ level: config.logLevel });
 
+/** Comandos que fazem chamadas LLM e devem ser rate-limited */
+const RATE_LIMITED_COMMANDS = new Set([
+  'resumo', 'summary', 'retro', 'retrospectiva',
+  'persona', 'perfil', 'meperdi', 'catchup',
+]);
+
 export class CommandHandler {
   private commands: Map<string, ICommand> = new Map();
   private analytics: AnalyticsService | null = null;
+  private rateLimiter: IRateLimiter | null = null;
 
   /**
    * Configura o serviço de analytics para tracking de comandos.
    */
   setAnalytics(analytics: AnalyticsService): void {
     this.analytics = analytics;
+  }
+
+  /**
+   * Configura o rate limiter centralizado para comandos LLM.
+   */
+  setRateLimiter(rateLimiter: IRateLimiter): void {
+    this.rateLimiter = rateLimiter;
   }
 
   /**
@@ -36,6 +50,13 @@ export class CommandHandler {
       this.commands.set(alias.toLowerCase(), command);
     }
     logger.debug({ command: command.name, aliases: command.aliases }, 'Comando registrado');
+  }
+
+  /**
+   * Busca um comando por nome ou alias.
+   */
+  getCommand(name: string): ICommand | undefined {
+    return this.commands.get(name.toLowerCase());
   }
 
   /**
@@ -151,6 +172,15 @@ export class CommandHandler {
     if (!command) {
       logger.debug({ commandName }, 'Comando não encontrado');
       return false;
+    }
+
+    // Rate limit centralizado para comandos LLM
+    if (this.rateLimiter && RATE_LIMITED_COMMANDS.has(commandName)) {
+      const rateCheck = this.rateLimiter.consume(message.groupId);
+      if (!rateCheck.allowed) {
+        await reply(`⏳ Calma! Aguarde ${rateCheck.retryAfterSeconds}s antes de usar outro comando.`);
+        return true;
+      }
     }
 
     const ctx: CommandContext = {

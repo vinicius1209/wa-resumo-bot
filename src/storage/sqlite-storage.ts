@@ -51,6 +51,22 @@ export class SQLiteStorage implements IMessageStorage {
     if (!columns.some((c) => c.name === 'media_description')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN media_description TEXT');
     }
+
+    // Chat history — persistência de comandos executados via dashboard (sem purge)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        command TEXT,
+        args TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_history_group
+        ON chat_history(group_id, created_at);
+    `);
   }
 
   async save(message: StoredMessage): Promise<void> {
@@ -126,6 +142,34 @@ export class SQLiteStorage implements IMessageStorage {
       'UPDATE messages SET media_description = ? WHERE id = ?'
     );
     stmt.run(description, messageId);
+  }
+
+  // ============================================
+  // Chat History (dashboard commands — sem purge)
+  // ============================================
+
+  saveChatEntry(groupId: string, role: 'user' | 'bot', content: string, command?: string, args?: string): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO chat_history (group_id, role, content, command, args)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    stmt.run(groupId, role, content, command ?? null, args ?? null);
+  }
+
+  getChatHistory(groupId: string, limit = 100, offset = 0): { id: number; group_id: string; role: string; content: string; command: string | null; args: string | null; created_at: number }[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM chat_history
+      WHERE group_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ? OFFSET ?
+    `);
+    const rows = stmt.all(groupId, limit, offset) as any[];
+    return rows.reverse();
+  }
+
+  clearChatHistory(groupId: string): number {
+    const stmt = this.db.prepare('DELETE FROM chat_history WHERE group_id = ?');
+    return stmt.run(groupId).changes;
   }
 
   private rowToMessage(row: any): StoredMessage {

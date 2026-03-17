@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const rateLimiter = new RateLimiter();
 
   // 5. Summary Service
-  const summaryService = new SummaryService(storage, llmProvider, rateLimiter);
+  const summaryService = new SummaryService(storage, llmProvider);
   summaryService.setAnalytics(analytics);
 
   // 6. Media Processor
@@ -98,6 +98,7 @@ async function main(): Promise<void> {
   // 12. Comandos
   const commandHandler = new CommandHandler();
   commandHandler.setAnalytics(analytics);
+  commandHandler.setRateLimiter(rateLimiter);
   commandHandler.register(new ResumoCommand(summaryService));
   commandHandler.register(new StatsCommand(analytics));
   commandHandler.register(new PalavrasCommand(wordOfDayService));
@@ -128,11 +129,32 @@ async function main(): Promise<void> {
   whatsapp.on('connection:open', async () => {
     logger.info('✓ Bot online e escutando mensagens de grupo');
 
+    // Descobrir e registrar todos os grupos (bloqueados por padrão)
+    try {
+      const allGroups = await whatsapp.fetchAllGroups();
+      let newCount = 0;
+      for (const group of allGroups) {
+        const existing = dynamicConfig.getGroupSettings(group.id);
+        if (!existing) {
+          newCount++;
+        }
+        dynamicConfig.ensureGroupExists(group.id, group.name);
+      }
+      logger.info(
+        { total: allGroups.length, new: newCount },
+        '✓ Grupos descobertos e registrados'
+      );
+    } catch (error) {
+      logger.warn({ error }, 'Erro ao buscar grupos — serão registrados sob demanda');
+    }
+
     // Iniciar dashboard se habilitado
     try {
       await startDashboard({
         analyticsService: analytics,
         dynamicConfigService: dynamicConfig,
+        commandHandler,
+        storage,
       });
     } catch (error) {
       logger.error({ error }, 'Erro ao iniciar dashboard');
