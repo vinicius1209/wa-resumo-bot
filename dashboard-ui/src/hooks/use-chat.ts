@@ -8,6 +8,8 @@ export interface ChatMessage {
   content: string
   timestamp: Date
   loading?: boolean
+  audioBase64?: string
+  audioDurationSeconds?: number
 }
 
 function welcomeMessage(groupName?: string): ChatMessage {
@@ -26,6 +28,8 @@ function historyToMessages(entries: ChatHistoryEntry[]): ChatMessage[] {
     role: e.role as 'user' | 'bot',
     content: e.content,
     timestamp: new Date(e.created_at * 1000),
+    audioBase64: e.audio_base64 ?? undefined,
+    audioDurationSeconds: e.audio_duration ?? undefined,
   }))
 }
 
@@ -114,6 +118,8 @@ export function useChat() {
         role: 'bot',
         content: content || 'Sem resposta.',
         timestamp: new Date(),
+        audioBase64: result.audio?.base64,
+        audioDurationSeconds: result.audio?.durationSeconds,
       }
 
       setMessages((prev) => {

@@ -224,12 +224,18 @@ export async function apiRoutes(
       const replies: string[] = [];
       const silentReply = async (text: string) => { replies.push(text); };
 
+      const audioEntries: { base64: string; durationSeconds: number }[] = [];
+      const silentReplyAudio = async (audio: Buffer, durationSeconds: number) => {
+        audioEntries.push({ base64: audio.toString('base64'), durationSeconds });
+      };
+
       const ctx: CommandContext = {
         groupId: id,
         senderId: 'dashboard-admin',
         senderName: 'Dashboard',
         args: args || '',
         reply: silentReply,
+        replyAudio: silentReplyAudio,
       };
 
       try {
@@ -242,12 +248,14 @@ export async function apiRoutes(
           setImmediate(() => {
             try {
               storage.saveChatEntry(id, 'user', userInput, command, args || '');
-              storage.saveChatEntry(id, 'bot', botContent || 'Sem resposta.', command, args || '');
+              const lastAudio = audioEntries.length > 0 ? audioEntries[audioEntries.length - 1] : null;
+              storage.saveChatEntry(id, 'bot', botContent || 'Sem resposta.', command, args || '', lastAudio?.base64, lastAudio?.durationSeconds);
             } catch { /* log silencioso — não impacta o usuário */ }
           });
         }
 
-        return { command: cmd.name, replies };
+        const lastAudio = audioEntries.length > 0 ? audioEntries[audioEntries.length - 1] : undefined;
+        return { command: cmd.name, replies, audio: lastAudio };
       } catch (err) {
         return reply.status(500).send({
           error: 'Erro ao executar comando',

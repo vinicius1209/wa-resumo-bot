@@ -1,5 +1,6 @@
 import { Bot } from 'lucide-react'
 import { parseWhatsAppMarkdown, formatTime } from '@/lib/utils'
+import { AudioPlayer } from './AudioPlayer'
 
 export interface ChatMessageData {
   id: string
@@ -7,6 +8,8 @@ export interface ChatMessageData {
   content: string
   timestamp: Date
   loading?: boolean
+  audioBase64?: string
+  audioDurationSeconds?: number
 }
 
 interface ChatMessageProps {
@@ -45,10 +48,17 @@ export function ChatMessage({ message }: ChatMessageProps) {
           {message.loading ? (
             <TypingIndicator />
           ) : isBot ? (
-            <div
-              className="whitespace-pre-wrap break-words [&_strong]:font-semibold [&_em]:italic [&_s]:line-through [&_code]:text-emerald-400"
-              dangerouslySetInnerHTML={{ __html: parseWhatsAppMarkdown(message.content) }}
-            />
+            <>
+              <div
+                className="whitespace-pre-wrap break-words [&_strong]:font-semibold [&_em]:italic [&_s]:line-through [&_code]:text-emerald-400"
+                dangerouslySetInnerHTML={{ __html: parseWhatsAppMarkdown(message.content) }}
+              />
+              {message.audioBase64 && (
+                <div className="mt-2">
+                  <AudioPlayer audioBase64={message.audioBase64} durationSeconds={message.audioDurationSeconds} />
+                </div>
+              )}
+            </>
           ) : (
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
           )}

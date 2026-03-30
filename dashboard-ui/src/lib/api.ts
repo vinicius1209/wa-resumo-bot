@@ -69,6 +69,7 @@ export interface BotCommand {
 export interface CommandResult {
   command: string
   replies: string[]
+  audio?: { base64: string; durationSeconds: number }
 }
 
 export interface ChatHistoryEntry {
@@ -79,6 +80,8 @@ export interface ChatHistoryEntry {
   command: string | null
   args: string | null
   created_at: number
+  audio_base64: string | null
+  audio_duration: number | null
 }
 
 export interface HourlyData {

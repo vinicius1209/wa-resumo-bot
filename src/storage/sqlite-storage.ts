@@ -67,6 +67,20 @@ export class SQLiteStorage implements IMessageStorage {
       CREATE INDEX IF NOT EXISTS idx_chat_history_group
         ON chat_history(group_id, created_at);
     `);
+
+    // Migration: adicionar colunas de áudio ao chat_history
+    const chatCols = this.db.pragma('table_info(chat_history)') as Array<{ name: string }>;
+    if (!chatCols.some((c) => c.name === 'audio_base64')) {
+      this.db.exec(`
+        BEGIN;
+        ALTER TABLE chat_history ADD COLUMN audio_base64 TEXT;
+        ALTER TABLE chat_history ADD COLUMN audio_duration REAL;
+        COMMIT;
+      `);
+    } else if (!chatCols.some((c) => c.name === 'audio_duration')) {
+      // Caso parcial: audio_base64 existe mas audio_duration não (crash anterior)
+      this.db.exec('ALTER TABLE chat_history ADD COLUMN audio_duration REAL');
+    }
   }
 
   async save(message: StoredMessage): Promise<void> {
@@ -148,15 +162,15 @@ export class SQLiteStorage implements IMessageStorage {
   // Chat History (dashboard commands — sem purge)
   // ============================================
 
-  saveChatEntry(groupId: string, role: 'user' | 'bot', content: string, command?: string, args?: string): void {
+  saveChatEntry(groupId: string, role: 'user' | 'bot', content: string, command?: string, args?: string, audioBase64?: string, audioDuration?: number): void {
     const stmt = this.db.prepare(`
-      INSERT INTO chat_history (group_id, role, content, command, args)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO chat_history (group_id, role, content, command, args, audio_base64, audio_duration)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(groupId, role, content, command ?? null, args ?? null);
+    stmt.run(groupId, role, content, command ?? null, args ?? null, audioBase64 ?? null, audioDuration ?? null);
   }
 
-  getChatHistory(groupId: string, limit = 100, offset = 0): { id: number; group_id: string; role: string; content: string; command: string | null; args: string | null; created_at: number }[] {
+  getChatHistory(groupId: string, limit = 100, offset = 0): { id: number; group_id: string; role: string; content: string; command: string | null; args: string | null; created_at: number; audio_base64: string | null; audio_duration: number | null }[] {
     const stmt = this.db.prepare(`
       SELECT * FROM chat_history
       WHERE group_id = ?
