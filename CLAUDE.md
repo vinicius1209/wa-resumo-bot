@@ -86,6 +86,7 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
 | `bot_config` | Global key-value config (runtime, no restart) |
 | `group_settings` | Per-group allowlist, feature toggles (`features_json`), notes |
 | `podcast_cache` | Cached podcast audio blobs (OGG Opus) with message hash + TTL |
+| `chat_history` | Dashboard command history with optional audio (audio_base64, audio_duration) |
 
 ### Adding New Components
 
@@ -140,7 +141,7 @@ if (config.someFeature.enabled && dynamicConfig.isFeatureEnabled(groupId, 'featu
 
 ### Default behavior
 
-Per-group toggles default to **enabled** (`true`). A feature is only disabled when explicitly set to `false` in `features_json`. This means new features work immediately on all allowed groups without manual activation.
+Per-group toggles default to **enabled** (`true`). A feature is only disabled when explicitly set to `false` in `features_json`. This means new features work immediately on all allowed groups without manual activation. Exception: opt-in features (e.g. `viewonce`) default to **disabled** (`false`) via `isFeatureEnabled(groupId, 'featureName', false)`.
 
 ### Available features
 
@@ -158,6 +159,7 @@ Per-group toggles default to **enabled** (`true`). A feature is only disabled wh
 | `palavras` | Yes | `WORD_OF_DAY_AUTO` | Automatic word of day at 23h |
 | `treta` | Yes | `SENTIMENT_AUTO_REACT` | Auto-provocation via LLM when group heats up |
 | `podcast` | Yes | `PODCAST_ENABLED` | Podcast-style audio summary via Gemini/OpenAI TTS |
+| `viewonce` | Yes (default **off**) | — | Process view-once messages (opt-in) |
 
 ### Storage
 

@@ -199,11 +199,37 @@ export class WhatsAppConnection extends EventEmitter {
       content,
       timestamp,
       messageType: this.getMessageType(msg.message),
-      caption: msg.message?.imageMessage?.caption
-        || msg.message?.videoMessage?.caption
-        || undefined,
+      caption: (() => {
+        const m = msg.message ? this.unwrapMessage(msg.message) : null;
+        return m?.imageMessage?.caption || m?.videoMessage?.caption || undefined;
+      })(),
       quotedMessage: quotedText || undefined,
     };
+  }
+
+  /**
+   * Desembrulha wrappers de mensagem viewOnce, retornando a mensagem interna.
+   */
+  private unwrapMessage(message: WAMessageContent): WAMessageContent {
+    const inner = message.viewOnceMessageV2?.message
+      ?? message.viewOnceMessage?.message
+      ?? message.viewOnceMessageV2Extension?.message;
+    return (inner as WAMessageContent | null | undefined) ?? message;
+  }
+
+  /**
+   * Desembrulha wrappers viewOnce de uma mensagem raw (versão pública).
+   */
+  unwrapRawMessage(message: WAMessageContent): WAMessageContent {
+    return this.unwrapMessage(message);
+  }
+
+  /**
+   * Verifica se uma mensagem raw do Baileys é viewOnce.
+   */
+  isViewOnceMessage(message: WAMessageContent | null | undefined): boolean {
+    if (!message) return false;
+    return this.unwrapMessage(message) !== message;
   }
 
   /**
@@ -214,26 +240,29 @@ export class WhatsAppConnection extends EventEmitter {
   ): string | null {
     if (!message) return null;
 
+    // Desembrulhar viewOnce antes de processar
+    const msg = this.unwrapMessage(message);
+
     // Texto simples
-    if (message.conversation) return message.conversation;
+    if (msg.conversation) return msg.conversation;
 
     // Texto estendido (com menções, links, etc)
-    if (message.extendedTextMessage?.text) {
-      return message.extendedTextMessage.text;
+    if (msg.extendedTextMessage?.text) {
+      return msg.extendedTextMessage.text;
     }
 
     // Legenda de imagem/vídeo/documento
-    if (message.imageMessage?.caption) return `[Imagem] ${message.imageMessage.caption}`;
-    if (message.videoMessage?.caption) return `[Vídeo] ${message.videoMessage.caption}`;
-    if (message.documentMessage?.caption) return `[Documento] ${message.documentMessage.caption}`;
+    if (msg.imageMessage?.caption) return `[Imagem] ${msg.imageMessage.caption}`;
+    if (msg.videoMessage?.caption) return `[Vídeo] ${msg.videoMessage.caption}`;
+    if (msg.documentMessage?.caption) return `[Documento] ${msg.documentMessage.caption}`;
 
     // Mídia sem legenda
-    if (message.imageMessage) return '[Imagem enviada]';
-    if (message.videoMessage) return '[Vídeo enviado]';
-    if (message.audioMessage) return '[Áudio enviado]';
-    if (message.stickerMessage) return '[Sticker]';
-    if (message.documentMessage) {
-      return `[Documento: ${message.documentMessage.fileName || 'arquivo'}]`;
+    if (msg.imageMessage) return '[Imagem enviada]';
+    if (msg.videoMessage) return '[Vídeo enviado]';
+    if (msg.audioMessage) return '[Áudio enviado]';
+    if (msg.stickerMessage) return '[Sticker]';
+    if (msg.documentMessage) {
+      return `[Documento: ${msg.documentMessage.fileName || 'arquivo'}]`;
     }
 
     return null;
@@ -244,12 +273,16 @@ export class WhatsAppConnection extends EventEmitter {
    */
   private getMessageType(message: WAMessageContent | null | undefined): string {
     if (!message) return 'unknown';
-    if (message.conversation || message.extendedTextMessage) return 'text';
-    if (message.imageMessage) return 'image';
-    if (message.videoMessage) return 'video';
-    if (message.audioMessage) return 'audio';
-    if (message.stickerMessage) return 'sticker';
-    if (message.documentMessage) return 'document';
+
+    // Desembrulhar viewOnce antes de checar tipo
+    const msg = this.unwrapMessage(message);
+
+    if (msg.conversation || msg.extendedTextMessage) return 'text';
+    if (msg.imageMessage) return 'image';
+    if (msg.videoMessage) return 'video';
+    if (msg.audioMessage) return 'audio';
+    if (msg.stickerMessage) return 'sticker';
+    if (msg.documentMessage) return 'document';
     return 'unknown';
   }
 
@@ -300,7 +333,7 @@ export class WhatsAppConnection extends EventEmitter {
    * Retorna o MIME type da mídia de uma mensagem.
    */
   getMediaMimeType(rawMessage: proto.IWebMessageInfo): string {
-    const msg = rawMessage.message;
+    const msg = rawMessage.message ? this.unwrapMessage(rawMessage.message) : null;
     return msg?.imageMessage?.mimetype
       || msg?.videoMessage?.mimetype
       || msg?.audioMessage?.mimetype
