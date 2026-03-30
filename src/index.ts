@@ -204,6 +204,12 @@ async function main(): Promise<void> {
       dynamicConfig.ensureGroupExists(message.groupId);
     });
 
+    // Mensagens de visualização única: ignorar se feature desabilitada (default: off)
+    if (whatsapp.isViewOnceMessage(rawMessage.message)
+        && !dynamicConfig.isFeatureEnabled(message.groupId, 'viewonce', false)) {
+      return;
+    }
+
     // Armazenar toda mensagem
     try {
       await storage.save(message);
@@ -231,9 +237,6 @@ async function main(): Promise<void> {
         });
       }
     }
-
-    // Atualizar atividade do membro (para catchup)
-    catchupService.updateActivity(message.groupId, message.senderId, message.timestamp);
 
     // Auto-detecção de compromissos (fire-and-forget, não bloqueia)
     if (
@@ -359,11 +362,20 @@ async function main(): Promise<void> {
         );
       }
     }
+
+    // Atualizar atividade do membro (para catchup)
+    // Deve rodar DEPOIS do command handler para que /meperdi leia o lastSeen anterior
+    catchupService.updateActivity(message.groupId, message.senderId, message.timestamp);
   });
 
   // DMs conversacionais (se habilitado)
   if (conversationService && config.conversation.dmEnabled) {
-    whatsapp.on('message:dm', async (message: StoredMessage) => {
+    whatsapp.on('message:dm', async (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => {
+      // Ignorar mensagens viewOnce em DMs também
+      if (whatsapp.isViewOnceMessage(rawMessage.message)) {
+        return;
+      }
+
       const reply = async (text: string) => {
         await whatsapp.sendMessage(message.senderId, text);
       };
@@ -482,10 +494,12 @@ async function processMedia(
   const mimeType = whatsapp.getMediaMimeType(rawMessage);
 
   // Verificar tamanho (estimativa via fileLength do Baileys)
+  // Desembrulhar viewOnce para acessar fileLength real
+  const innerMsg = rawMessage.message ? whatsapp.unwrapRawMessage(rawMessage.message) : null;
   const fileLength = Number(
-    rawMessage.message?.imageMessage?.fileLength
-    || rawMessage.message?.videoMessage?.fileLength
-    || rawMessage.message?.audioMessage?.fileLength
+    innerMsg?.imageMessage?.fileLength
+    || innerMsg?.videoMessage?.fileLength
+    || innerMsg?.audioMessage?.fileLength
     || 0
   );
   const maxBytes = config.media.maxSizeMB * 1024 * 1024;

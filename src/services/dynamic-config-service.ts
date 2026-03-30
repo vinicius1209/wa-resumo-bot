@@ -222,22 +222,23 @@ export class DynamicConfigService {
 
   /**
    * Verifica se uma feature está habilitada para um grupo.
-   * Retorna true se não houver registro ou se a feature não estiver no JSON (default enabled).
+   * @param defaultEnabled — valor default quando a feature não está no JSON (default: true).
+   *                         Usar `false` para features que devem ser opt-in (ex: viewonce).
    */
-  isFeatureEnabled(groupId: string, feature: string): boolean {
-    if (!this.db) return true;
+  isFeatureEnabled(groupId: string, feature: string, defaultEnabled = true): boolean {
+    if (!this.db) return defaultEnabled;
 
     const row = this.db.prepare(
       'SELECT features_json FROM group_settings WHERE group_id = ?'
     ).get(groupId) as { features_json: string | null } | undefined;
 
-    if (!row || !row.features_json) return true;
+    if (!row || !row.features_json) return defaultEnabled;
 
     try {
       const features = JSON.parse(row.features_json) as Record<string, boolean>;
-      return features[feature] !== false; // default true se não definido
+      return features[feature] ?? defaultEnabled;
     } catch {
-      return true;
+      return defaultEnabled;
     }
   }
 
