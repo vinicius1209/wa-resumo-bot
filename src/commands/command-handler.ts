@@ -8,16 +8,18 @@
  * Plug and play: para adicionar um comando novo,
  * crie uma classe ICommand e registre via .register()
  */
-import { ICommand, CommandContext, StoredMessage, IRateLimiter } from '../types';
+import { ICommand, CommandContext, StoredMessage } from '../types';
 import { config } from '../config';
 import { AnalyticsService } from '../services/analytics-service';
+import { RateLimitManager } from '../services/rate-limit-manager';
+import { CommandDebouncer } from '../services/command-debouncer';
 import { eventBus } from '../services/event-bus';
 import pino from 'pino';
 
 const logger = pino({ level: config.logLevel });
 
-/** Comandos que fazem chamadas LLM e devem ser rate-limited */
-const RATE_LIMITED_COMMANDS = new Set([
+/** Comandos que fazem chamadas LLM (rate-limited + debounced) */
+const LLM_COMMANDS = new Set([
   'resumo', 'summary', 'retro', 'retrospectiva',
   'persona', 'perfil', 'meperdi', 'catchup',
   'podcast', 'audio', 'audioresumo',
@@ -34,7 +36,8 @@ export interface HandleResult {
 export class CommandHandler {
   private commands: Map<string, ICommand> = new Map();
   private analytics: AnalyticsService | null = null;
-  private rateLimiter: IRateLimiter | null = null;
+  private rateLimitManager: RateLimitManager | null = null;
+  private debouncer: CommandDebouncer | null = null;
 
   /**
    * Configura o serviço de analytics para tracking de comandos.
@@ -44,10 +47,17 @@ export class CommandHandler {
   }
 
   /**
-   * Configura o rate limiter centralizado para comandos LLM.
+   * Configura o rate limit manager multi-tier.
    */
-  setRateLimiter(rateLimiter: IRateLimiter): void {
-    this.rateLimiter = rateLimiter;
+  setRateLimitManager(rateLimitManager: RateLimitManager): void {
+    this.rateLimitManager = rateLimitManager;
+  }
+
+  /**
+   * Configura o debouncer para comandos LLM repetidos.
+   */
+  setDebouncer(debouncer: CommandDebouncer): void {
+    this.debouncer = debouncer;
   }
 
   /**
@@ -199,11 +209,29 @@ export class CommandHandler {
       return false;
     }
 
-    // Rate limit centralizado para comandos LLM
-    if (this.rateLimiter && RATE_LIMITED_COMMANDS.has(commandName)) {
-      const rateCheck = this.rateLimiter.consume(message.groupId);
+    const isLLM = LLM_COMMANDS.has(commandName);
+
+    // Debounce: se mesmo usuário manda o mesmo comando LLM repetidamente,
+    // só processa o último após 2s de inatividade
+    if (isLLM && this.debouncer) {
+      const debounceKey = `${message.senderId}:${commandName}`;
+      const shouldExecute = await this.debouncer.debounce(debounceKey);
+      if (!shouldExecute) {
+        return true; // Silenciosamente descartado (outro call mais recente vai executar)
+      }
+    }
+
+    // Rate limit multi-tier
+    if (this.rateLimitManager) {
+      const rateCheck = this.rateLimitManager.checkCommand(message.senderId, message.groupId, isLLM);
       if (!rateCheck.allowed) {
-        await reply(`⏳ Calma! Aguarde ${rateCheck.retryAfterSeconds}s antes de usar outro comando.`);
+        const msgs: Record<string, string> = {
+          'burst': `⏳ Devagar! Aguarde ${rateCheck.retryAfterSeconds}s.`,
+          'user-llm': `⏳ Você atingiu seu limite de comandos. Aguarde ${rateCheck.retryAfterSeconds}s.`,
+          'group-llm': `⏳ O grupo atingiu o limite de comandos. Aguarde ${rateCheck.retryAfterSeconds}s.`,
+          'user-cheap': `⏳ Muitos comandos seguidos. Aguarde ${rateCheck.retryAfterSeconds}s.`,
+        };
+        await reply(msgs[rateCheck.tier ?? 'burst'] ?? `⏳ Aguarde ${rateCheck.retryAfterSeconds}s.`);
         return true;
       }
     }

@@ -14,7 +14,7 @@ import { WhatsAppConnection } from './whatsapp';
 import { SQLiteStorage } from './storage';
 import { createLLMProvider } from './llm';
 import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand, PodcastCommand } from './commands';
-import { RateLimiter, SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, PodcastService, eventBus } from './services';
+import { SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, PodcastService, RateLimitManager, CommandDebouncer, eventBus } from './services';
 import { createTTSProvider } from './tts';
 import { startDashboard, stopDashboard } from './dashboard/server';
 import { StoredMessage } from './types';
@@ -46,8 +46,9 @@ async function main(): Promise<void> {
   const llmProvider = createLLMProvider();
   logger.info({ provider: llmProvider.name }, '✓ LLM Provider criado');
 
-  // 4. Rate Limiter
-  const rateLimiter = new RateLimiter();
+  // 4. Rate Limit Manager (multi-tier) + Debouncer
+  const rateLimitManager = new RateLimitManager();
+  const debouncer = new CommandDebouncer();
 
   // 5. Summary Service
   const summaryService = new SummaryService(storage, llmProvider);
@@ -98,11 +99,9 @@ async function main(): Promise<void> {
 
   // 11.5. Conversation Service (modo conversacional)
   let conversationService: ConversationService | null = null;
-  let conversationRateLimiter: RateLimiter | null = null;
   if (config.conversation.enabled) {
     conversationService = new ConversationService(storage, llmProvider, sentimentService, analytics);
     conversationService.initTable(storage.getDatabase());
-    conversationRateLimiter = new RateLimiter(10, config.rateLimit.windowSeconds);
     logger.info('✓ Modo conversacional habilitado');
   }
 
@@ -119,7 +118,8 @@ async function main(): Promise<void> {
   // 12. Comandos
   const commandHandler = new CommandHandler();
   commandHandler.setAnalytics(analytics);
-  commandHandler.setRateLimiter(rateLimiter);
+  commandHandler.setRateLimitManager(rateLimitManager);
+  commandHandler.setDebouncer(debouncer);
   commandHandler.register(new ResumoCommand(summaryService));
   commandHandler.register(new StatsCommand(analytics));
   commandHandler.register(new PalavrasCommand(wordOfDayService));
@@ -349,10 +349,9 @@ async function main(): Promise<void> {
       && result.isBotMention
       && result.mentionText
       && conversationService
-      && conversationRateLimiter
       && dynamicConfig.isFeatureEnabled(message.groupId, 'conversa')
     ) {
-      const rateCheck = conversationRateLimiter.consume(`conv:${message.groupId}`);
+      const rateCheck = rateLimitManager.checkConversation(message.groupId);
       if (!rateCheck.allowed) {
         await reply(`⏳ Aguarde ${rateCheck.retryAfterSeconds}s para continuar a conversa.`);
       } else {
@@ -379,6 +378,14 @@ async function main(): Promise<void> {
       const reply = async (text: string) => {
         await whatsapp.sendMessage(message.senderId, text);
       };
+
+      // Rate limit para DMs (3 por 5min por sender)
+      const dmCheck = rateLimitManager.checkDM(message.senderId);
+      if (!dmCheck.allowed) {
+        await reply(`⏳ Aguarde ${dmCheck.retryAfterSeconds}s para continuar a conversa.`);
+        return;
+      }
+
       await conversationService!.handleConversation(
         'dm', message.senderId, message.senderName,
         message.content, reply,
@@ -392,8 +399,8 @@ async function main(): Promise<void> {
 
   // 11. Limpeza periódica de rate limit + sessões (a cada 10 min)
   setInterval(() => {
-    rateLimiter.cleanup();
-    conversationRateLimiter?.cleanup();
+    rateLimitManager.cleanup();
+    debouncer.cleanup();
     conversationService?.cleanup();
     podcastService?.cleanup();
   }, 10 * 60 * 1000);

@@ -1,4 +1,6 @@
 export { RateLimiter } from './rate-limiter';
+export { RateLimitManager } from './rate-limit-manager';
+export { CommandDebouncer } from './command-debouncer';
 export { SummaryService } from './summary-service';
 export { MediaProcessor } from './media-processor';
 export { AnalyticsService } from './analytics-service';

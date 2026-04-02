@@ -62,6 +62,26 @@ export class RateLimiter implements IRateLimiter {
   }
 
   /**
+   * Verifica o rate limit sem consumir (read-only).
+   */
+  peek(key: string): RateLimitResult {
+    const now = Date.now();
+    const entry = this.windows.get(key);
+
+    if (!entry) {
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+
+    const active = entry.timestamps.filter((ts) => now - ts < this.windowMs);
+    if (active.length >= this.maxRequests) {
+      const retryAfterMs = this.windowMs - (now - active[0]);
+      return { allowed: false, retryAfterSeconds: Math.ceil(retryAfterMs / 1000) };
+    }
+
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  /**
    * Reseta o rate limit para uma chave (útil para admin).
    */
   reset(key: string): void {

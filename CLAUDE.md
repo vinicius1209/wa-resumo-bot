@@ -29,7 +29,7 @@ There are no tests or linting configured.
 All modules depend on interfaces in `src/types/index.ts`:
 - **IMessageStorage** — message persistence (implemented by SQLiteStorage)
 - **ILLMProvider** — LLM summarization + chat (OpenAI and Anthropic implementations)
-- **IRateLimiter** — rate limiting (sliding window, per-group, in-memory)
+- **IRateLimiter** — rate limiting (sliding window, in-memory). Multi-tier via `RateLimitManager`
 - **IMediaProcessor** — media processing (vision + audio transcription)
 - **ICommand** — bot commands
 - **ITTSProvider** — text-to-speech synthesis (Gemini and OpenAI implementations)
@@ -64,7 +64,9 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
 - **`src/llm/`** — System prompt + message formatting in `base-prompt.ts`. Conversation prompt in `conversation-prompt.ts`. Podcast dialogue prompt in `podcast-prompt.ts`. OpenAI/Anthropic providers with `summarize()` (temp 0.3, 2000 tokens) and `chat()` (temp 0.7, 1000 tokens)
 - **`src/tts/`** — TTS provider abstraction. Gemini TTS (multi-speaker, PCM→OGG Opus via ffmpeg) and OpenAI TTS (per-line synthesis + concat). Factory in `tts-factory.ts`
 - **`src/services/podcast-service.ts`** — Orchestrates summary → podcast script → TTS audio. SHA-256 cache by message hash in SQLite (`podcast_cache` table, 15min TTL). Cleanup runs with other schedulers
-- **`src/commands/command-handler.ts`** — Routes prefix commands and @mention commands. Returns `HandleResult` with `isBotMention` flag for conversational routing. Tracks command execution via AnalyticsService
+- **`src/commands/command-handler.ts`** — Routes prefix commands and @mention commands. Returns `HandleResult` with `isBotMention` flag for conversational routing. Integrates debouncer + multi-tier rate limiting. Tracks command execution via AnalyticsService
+- **`src/services/rate-limit-manager.ts`** — Multi-tier rate limiting facade: per-user burst (2/30s), per-user LLM (5/1h), per-group LLM (15/1h), per-user cheap (10/60s), DM (3/5min), conversation (10/5min). Peek-then-consume to avoid partial quota consumption
+- **`src/services/command-debouncer.ts`** — Debounces repeated LLM commands from same user (2s delay). If user sends /resumo 100x, only the last one executes
 - **`src/services/conversation-service.ts`** — Multi-turn conversation sessions keyed by (groupId, senderId). Context injection from recent messages + sentiment. SQLite persistence + in-memory cache. TTL-based session expiry
 - **`src/services/analytics-service.ts`** — Fire-and-forget event tracking. Aggregation queries for daily/weekly usage, cost by model, performance metrics. Shared SQLite connection via `initTable(db)`
 
