@@ -41,6 +41,15 @@ async function main(): Promise<void> {
   // 2.5. Dynamic Config
   const dynamicConfig = new DynamicConfigService();
   dynamicConfig.initTable(storage.getDatabase());
+  dynamicConfig.seedDefaults({
+    conversation_enabled: String(config.conversation.enabled),
+    conversation_dm_enabled: String(config.conversation.dmEnabled),
+    triage_enabled: String(config.triage.enabled),
+    podcast_enabled: String(config.podcast.enabled),
+    media_enabled: String(config.media.enabled),
+    word_of_day_auto: String(config.wordOfDay.autoSend),
+    sentiment_auto_react: String(config.sentiment.autoReact),
+  });
   logger.info('✓ Dynamic Config inicializado');
 
   // 3. LLM Provider
@@ -56,10 +65,8 @@ async function main(): Promise<void> {
   summaryService.setAnalytics(analytics);
 
   // 6. Media Processor
-  const mediaProcessor = config.media.enabled ? new MediaProcessor() : null;
-  if (mediaProcessor) {
-    logger.info('✓ Processamento de mídia habilitado');
-  }
+  const mediaProcessor = new MediaProcessor();
+  logger.info('✓ Media Processor inicializado');
 
   // 7. Word of Day + Link Curator
   const wordOfDayService = new WordOfDayService();
@@ -99,26 +106,25 @@ async function main(): Promise<void> {
   logger.info('✓ Serviço Fase 5 inicializado (Catchup)');
 
   // 11.5. Conversation Service (modo conversacional)
-  let conversationService: ConversationService | null = null;
-  if (config.conversation.enabled) {
-    conversationService = new ConversationService(storage, llmProvider, sentimentService, analytics);
-    conversationService.initTable(storage.getDatabase());
-    logger.info('✓ Modo conversacional habilitado');
-  }
+  const conversationService = new ConversationService(storage, llmProvider, sentimentService, analytics);
+  conversationService.initTable(storage.getDatabase());
+  logger.info('✓ Conversation service inicializado');
 
   // 11.6. Podcast Service (resumo em áudio)
   let podcastService: PodcastService | null = null;
-  if (config.podcast.enabled) {
+  try {
     const ttsProvider = createTTSProvider();
     podcastService = new PodcastService(storage, llmProvider, ttsProvider);
     podcastService.initTable(storage.getDatabase());
     podcastService.setAnalytics(analytics);
-    logger.info({ ttsProvider: ttsProvider.name }, '✓ Podcast habilitado');
+    logger.info({ ttsProvider: ttsProvider.name }, '✓ Podcast service inicializado');
+  } catch {
+    logger.info('Podcast service não disponível (credenciais TTS ausentes)');
   }
 
   // 11.7. Project Triage (triagem automática de DMs por projeto)
   let triageService: ProjectTriageService | null = null;
-  if (config.triage.enabled) {
+  try {
     triageService = new ProjectTriageService(llmProvider);
     triageService.initTable(storage.getDatabase());
 
@@ -137,7 +143,9 @@ async function main(): Promise<void> {
     const codeAgent = new CodeAgent({ model: 'sonnet' });
     triageService.setCodeAgent(codeAgent);
 
-    logger.info('✓ Triage de projetos habilitado');
+    logger.info('✓ Triage service inicializado');
+  } catch (err) {
+    logger.info({ err }, 'Triage service não disponível');
   }
 
   // 12. Comandos
@@ -204,7 +212,7 @@ async function main(): Promise<void> {
         dynamicConfigService: dynamicConfig,
         commandHandler,
         storage,
-        conversationService: conversationService ?? undefined,
+        conversationService,
         triageService: triageService ?? undefined,
       });
     } catch (error) {
@@ -245,7 +253,7 @@ async function main(): Promise<void> {
     }
 
     // Processar mídia em background (não bloqueia comando)
-    if (mediaProcessor && message.messageType !== 'text' && message.messageType !== 'unknown') {
+    if (dynamicConfig.getBoolean('media_enabled', true) && message.messageType !== 'text' && message.messageType !== 'unknown') {
       processMedia(whatsapp, mediaProcessor, storage, analytics, message, rawMessage).catch((error) => {
         logger.error({ error, messageId: message.id }, 'Erro ao processar mídia');
       });
@@ -300,7 +308,7 @@ async function main(): Promise<void> {
 
     // Auto-provocação via LLM quando o grupo esquenta (opt-in)
     if (
-      config.sentiment.autoReact
+      dynamicConfig.getBoolean('sentiment_auto_react', false)
       && llmProvider.chat
       && dynamicConfig.isFeatureEnabled(message.groupId, 'treta')
       && sentimentService.shouldReact(message.groupId)
@@ -374,7 +382,7 @@ async function main(): Promise<void> {
       !result.handled
       && result.isBotMention
       && result.mentionText
-      && conversationService
+      && dynamicConfig.getBoolean('conversation_enabled', false)
       && dynamicConfig.isFeatureEnabled(message.groupId, 'conversa')
     ) {
       const rateCheck = rateLimitManager.checkConversation(message.groupId);
@@ -393,85 +401,79 @@ async function main(): Promise<void> {
     catchupService.updateActivity(message.groupId, message.senderId, message.timestamp);
   });
 
-  // DMs: triage de projetos + conversação
-  const dmEnabled = (triageService && config.triage.enabled)
-    || (conversationService && config.conversation.dmEnabled);
+  // DMs: triage de projetos + conversação (sempre registrado, toggles checados em runtime)
+  whatsapp.on('message:dm', async (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => {
+    const triageActive = triageService && dynamicConfig.getBoolean('triage_enabled', false);
+    const dmConvoActive = dynamicConfig.getBoolean('conversation_dm_enabled', false);
 
-  if (dmEnabled) {
-    whatsapp.on('message:dm', async (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => {
-      // Ignorar mensagens viewOnce em DMs
-      if (whatsapp.isViewOnceMessage(rawMessage.message)) {
-        return;
-      }
+    if (!triageActive && !dmConvoActive) return;
 
-      const reply = async (text: string) => {
-        await whatsapp.sendMessage(message.senderId, text);
-      };
+    if (whatsapp.isViewOnceMessage(rawMessage.message)) return;
 
-      // Rate limit para DMs (3 por 5min por sender)
-      const dmCheck = rateLimitManager.checkDM(message.senderId);
-      if (!dmCheck.allowed) {
-        await reply(`⏳ Aguarde ${dmCheck.retryAfterSeconds}s para continuar a conversa.`);
-        return;
-      }
+    const reply = async (text: string) => {
+      await whatsapp.sendMessage(message.senderId, text);
+    };
 
-      // Triage: se o contato está mapeado a um projeto, triar a mensagem
-      if (triageService) {
-        const project = triageService.findProjectByContact(message.senderId);
-        logger.info(
-          { senderId: message.senderId, senderName: message.senderName, projectFound: project?.name ?? null },
-          'Triage: buscando projeto para contato DM',
-        );
-        if (project) {
-          // Processar mídia se houver (áudio → transcrição, imagem → descrição)
-          let mediaDesc: string | undefined;
-          let audioTranscript: string | undefined;
+    // Rate limit para DMs (3 por 5min por sender)
+    const dmCheck = rateLimitManager.checkDM(message.senderId);
+    if (!dmCheck.allowed) {
+      await reply(`⏳ Aguarde ${dmCheck.retryAfterSeconds}s para continuar a conversa.`);
+      return;
+    }
 
-          if (mediaProcessor && message.messageType !== 'text' && message.messageType !== 'unknown') {
-            try {
-              const buffer = await whatsapp.downloadMedia(rawMessage);
-              if (buffer) {
-                const mimeType = whatsapp.getMediaMimeType(rawMessage);
-                if (message.messageType === 'audio') {
-                  audioTranscript = await mediaProcessor.processAudio(buffer, mimeType) ?? undefined;
-                } else if (message.messageType === 'image' || message.messageType === 'sticker') {
-                  mediaDesc = await mediaProcessor.processImage(buffer, mimeType) ?? undefined;
-                }
-              }
-            } catch (err) {
-              logger.warn({ err, messageId: message.id }, 'Erro ao processar mídia de DM para triage');
-            }
-          }
+    // Triage: contato mapeado a projeto
+    if (triageActive) {
+      const project = triageService!.findProjectByContact(message.senderId);
+      logger.info(
+        { senderId: message.senderId, senderName: message.senderName, projectFound: project?.name ?? null },
+        'Triage: buscando projeto para contato DM',
+      );
+      if (project) {
+        let mediaDesc: string | undefined;
+        let audioTranscript: string | undefined;
 
+        if (dynamicConfig.getBoolean('media_enabled', true) && message.messageType !== 'text' && message.messageType !== 'unknown') {
           try {
-            const result = await triageService.triageMessage(message, mediaDesc, audioTranscript);
-            if (result && result.results.length > 0) {
-              const boardNames = result.results.map((r) => r.url || r.id).join('\n');
-              await reply(
-                `✅ *${result.item.title}*\n`
-                + `Tipo: ${result.item.type} | Prioridade: ${result.item.priority}\n`
-                + `Registrado em: ${boardNames}`,
-              );
+            const buffer = await whatsapp.downloadMedia(rawMessage);
+            if (buffer) {
+              const mimeType = whatsapp.getMediaMimeType(rawMessage);
+              if (message.messageType === 'audio') {
+                audioTranscript = await mediaProcessor.processAudio(buffer, mimeType) ?? undefined;
+              } else if (message.messageType === 'image' || message.messageType === 'sticker') {
+                mediaDesc = await mediaProcessor.processImage(buffer, mimeType) ?? undefined;
+              }
             }
           } catch (err) {
-            logger.error({ err, messageId: message.id }, 'Erro no triage de DM');
+            logger.warn({ err, messageId: message.id }, 'Erro ao processar mídia de DM para triage');
           }
-          return; // Mensagem triada — não encaminhar para conversação
         }
-      }
 
-      // Conversação: se não foi triada e conversação DM está habilitada
-      if (conversationService && config.conversation.dmEnabled) {
-        await conversationService.handleConversation(
-          'dm', message.senderId, message.senderName,
-          message.content, reply,
-        );
+        try {
+          const result = await triageService!.triageMessage(message, mediaDesc, audioTranscript);
+          if (result && result.results.length > 0) {
+            const boardNames = result.results.map((r) => r.url || r.id).join('\n');
+            await reply(
+              `✅ *${result.item.title}*\n`
+              + `Tipo: ${result.item.type} | Prioridade: ${result.item.priority}\n`
+              + `Registrado em: ${boardNames}`,
+            );
+          }
+        } catch (err) {
+          logger.error({ err, messageId: message.id }, 'Erro no triage de DM');
+        }
+        return;
       }
-    });
+    }
 
-    if (triageService) logger.info('✓ Triage de DMs habilitado');
-    if (conversationService && config.conversation.dmEnabled) logger.info('✓ DMs conversacionais habilitadas');
-  }
+    // Conversação DM (contato não mapeado)
+    if (dmConvoActive) {
+      await conversationService.handleConversation(
+        'dm', message.senderId, message.senderName,
+        message.content, reply,
+      );
+    }
+  });
+  logger.info('✓ Handler de DMs registrado (triage + conversação)');
 
   // 10. Conectar
   await whatsapp.connect();
@@ -480,7 +482,7 @@ async function main(): Promise<void> {
   setInterval(() => {
     rateLimitManager.cleanup();
     debouncer.cleanup();
-    conversationService?.cleanup();
+    conversationService.cleanup();
     podcastService?.cleanup();
   }, 10 * 60 * 1000);
 
@@ -511,48 +513,49 @@ async function main(): Promise<void> {
     }
   }, 30 * 60 * 1000);
 
-  // Palavra do dia — scheduler diário às 23h (apenas se habilitado)
-  if (config.wordOfDay.autoSend) {
-    const scheduleWordOfDay = () => {
-      const now = new Date();
-      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0);
-      if (target.getTime() <= now.getTime()) {
-        target.setDate(target.getDate() + 1);
+  // Palavra do dia — scheduler diário às 23h (toggle checado em runtime)
+  const scheduleWordOfDay = () => {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0);
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 1);
+    }
+    const msUntil = target.getTime() - now.getTime();
+
+    setTimeout(async () => {
+      if (!dynamicConfig.getBoolean('word_of_day_auto', false)) {
+        scheduleWordOfDay(); // reagendar mas pular execução
+        return;
       }
-      const msUntil = target.getTime() - now.getTime();
 
-      setTimeout(async () => {
-        try {
-          const startOfDay = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
-          const endOfDay = Math.floor(Date.now() / 1000);
-          const db = storage.getDatabase();
-          const groups = db.prepare(
-            'SELECT DISTINCT group_id FROM messages WHERE timestamp >= ? AND timestamp <= ?'
-          ).all(startOfDay, endOfDay) as Array<{ group_id: string }>;
+      try {
+        const startOfDay = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+        const endOfDay = Math.floor(Date.now() / 1000);
+        const db = storage.getDatabase();
+        const groups = db.prepare(
+          'SELECT DISTINCT group_id FROM messages WHERE timestamp >= ? AND timestamp <= ?'
+        ).all(startOfDay, endOfDay) as Array<{ group_id: string }>;
 
-          for (const { group_id } of groups) {
-            // Respeitar allowlist e feature toggle
-            if (!dynamicConfig.isGroupAllowed(group_id)) continue;
-            if (!dynamicConfig.isFeatureEnabled(group_id, 'palavras')) continue;
+        for (const { group_id } of groups) {
+          // Respeitar allowlist e feature toggle
+          if (!dynamicConfig.isGroupAllowed(group_id)) continue;
+          if (!dynamicConfig.isFeatureEnabled(group_id, 'palavras')) continue;
 
-            const result = await wordOfDayService.generateWordOfDay(group_id, storage);
-            if (result) {
-              const text = `🏆 *Palavra do dia:* _${result.word}_ (mencionada ${result.count}x por ${result.uniqueSenders} pessoas)`;
-              await whatsapp.sendMessage(group_id, text);
-            }
+          const result = await wordOfDayService.generateWordOfDay(group_id, storage);
+          if (result) {
+            const text = `🏆 *Palavra do dia:* _${result.word}_ (mencionada ${result.count}x por ${result.uniqueSenders} pessoas)`;
+            await whatsapp.sendMessage(group_id, text);
           }
-        } catch (error) {
-          logger.error({ error }, 'Erro no scheduler palavra do dia');
         }
-        scheduleWordOfDay();
-      }, msUntil);
+      } catch (error) {
+        logger.error({ error }, 'Erro no scheduler palavra do dia');
+      }
+      scheduleWordOfDay();
+    }, msUntil);
 
-      logger.info({ nextRunIn: `${Math.round(msUntil / 60000)}min` }, '✓ Palavra do dia agendada');
-    };
-    scheduleWordOfDay();
-  } else {
-    logger.info('Palavra do dia automática desabilitada (use /palavras manualmente)');
-  }
+    logger.info({ nextRunIn: `${Math.round(msUntil / 60000)}min` }, '✓ Palavra do dia agendada');
+  };
+  scheduleWordOfDay();
 
   // Graceful shutdown
   const shutdown = async () => {

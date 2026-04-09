@@ -127,6 +127,13 @@ export async function apiRoutes(
       MEDIA_PROCESSING_ENABLED: String(config.media.enabled),
       MEDIA_MAX_SIZE_MB: String(config.media.maxSizeMB),
       DASHBOARD_PORT: String(config.dashboard.port),
+      conversation_enabled: String(config.conversation.enabled),
+      conversation_dm_enabled: String(config.conversation.dmEnabled),
+      triage_enabled: String(config.triage.enabled),
+      podcast_enabled: String(config.podcast.enabled),
+      media_enabled: String(config.media.enabled),
+      word_of_day_auto: String(config.wordOfDay.autoSend),
+      sentiment_auto_react: String(config.sentiment.autoReact),
     };
     const overrides = dynamicConfigService.getAll();
     return { ...defaults, ...overrides };

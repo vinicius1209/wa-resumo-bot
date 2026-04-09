@@ -164,8 +164,8 @@ export class WhatsAppConnection extends EventEmitter {
           continue;
         }
 
-        // DMs (mensagens diretas) — habilitado se conversação DM ou triage estiver ativo
-        if ((config.conversation.dmEnabled || config.triage.enabled) && !isJidGroup(remoteJid)) {
+        // DMs (mensagens diretas) — sempre emitidas; o handler em index.ts decide o que fazer
+        if (!isJidGroup(remoteJid)) {
           const stored = this.parseMessage(msg, remoteJid);
           if (stored) {
             this.logger.info(

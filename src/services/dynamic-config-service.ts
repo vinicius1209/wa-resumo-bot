@@ -70,6 +70,35 @@ export class DynamicConfigService {
   }
 
   /**
+   * Lê uma config global como booleano.
+   * Trata 'true' e '1' como true, qualquer outro valor como false.
+   * Retorna o fallback se a chave não existir.
+   */
+  getBoolean(key: string, fallback: boolean): boolean {
+    const value = this.get(key);
+    if (value === null) return fallback;
+    return value === 'true' || value === '1';
+  }
+
+  /**
+   * Popula bot_config com valores padrão usando INSERT OR IGNORE.
+   * Só escreve se a chave ainda não existir — nunca sobrescreve valores existentes.
+   * Chamado uma vez na inicialização para semear valores do .env.
+   */
+  seedDefaults(defaults: Record<string, string>): void {
+    if (!this.db) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO bot_config (key, value, updated_at)
+      VALUES (?, ?, unixepoch())
+    `);
+
+    for (const [key, value] of Object.entries(defaults)) {
+      stmt.run(key, value);
+    }
+  }
+
+  /**
    * Define o valor de uma config global (upsert).
    */
   set(key: string, value: string): void {
