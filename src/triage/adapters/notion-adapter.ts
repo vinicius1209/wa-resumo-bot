@@ -38,11 +38,15 @@ interface NotionRichTextProperty {
   rich_text: Array<NotionRichText>;
 }
 
+interface NotionStatusProperty {
+  status: { name: string } | null;
+}
+
 interface NotionPageProperties {
   Title?: NotionTitleProperty;
   Type?: NotionSelectProperty;
   Priority?: NotionSelectProperty;
-  Status?: NotionSelectProperty;
+  Status?: NotionStatusProperty;
   Contact?: NotionRichTextProperty;
   Tags?: NotionMultiSelectProperty;
   Source?: NotionRichTextProperty;
@@ -89,13 +93,17 @@ function extractTitle(prop: NotionTitleProperty | undefined): string {
   return prop?.title?.[0]?.text?.content ?? '';
 }
 
+function extractStatusName(prop: NotionStatusProperty | undefined): string {
+  return prop?.status?.name ?? '';
+}
+
 function mapPageToBoardItem(page: NotionPage, projectId: string): BoardItem {
   const props = page.properties;
 
   return {
     id: page.id,
     url: page.url,
-    status: extractSelectName(props.Status),
+    status: extractStatusName(props.Status),
     projectId,
     title: extractTitle(props.Title),
     type: (extractSelectName(props.Type) as TriageType) || 'support',
@@ -160,7 +168,8 @@ export class NotionAdapter implements IProjectBoard {
   async updateItem(itemId: string, updates: Partial<TriageItem>): Promise<BoardItem> {
     logger.info({ itemId }, 'NotionAdapter: atualizando item');
 
-    const properties: Partial<NotionPageProperties> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic property building
+    const properties: Record<string, any> = {};
 
     if (updates.title !== undefined) {
       properties.Title = { title: richText(updates.title) };
@@ -172,7 +181,7 @@ export class NotionAdapter implements IProjectBoard {
       properties.Priority = { select: { name: updates.priority } };
     }
     if (updates.tags !== undefined) {
-      properties.Tags = { multi_select: updates.tags.map((t) => ({ name: t })) };
+      properties.Tags = { multi_select: updates.tags.map((t: string) => ({ name: t })) };
     }
     if (updates.source !== undefined) {
       properties.Contact = { rich_text: richText(updates.source.contactName) };
@@ -180,9 +189,6 @@ export class NotionAdapter implements IProjectBoard {
     }
 
     const page = await this.request<NotionPage>('PATCH', `/pages/${itemId}`, { properties });
-
-    // projectId nao esta na page do Notion, inferir do item original nao disponivel aqui
-    // usar campo Source para consistencia, mas projectId sera vazio se nao vier em updates
     return mapPageToBoardItem(page, updates.projectId ?? '');
   }
 
@@ -229,7 +235,7 @@ export class NotionAdapter implements IProjectBoard {
     const body = {
       filter: {
         property: 'Status',
-        select: { does_not_equal: 'Done' },
+        status: { does_not_equal: 'Done' },
       },
       page_size: Math.min(limit, 100),
     };
@@ -257,7 +263,7 @@ export class NotionAdapter implements IProjectBoard {
       Title: { title: richText(item.title) },
       Type: { select: { name: item.type } },
       Priority: { select: { name: item.priority } },
-      Status: { select: { name: 'Novo' } },
+      Status: { status: { name: 'Not started' } },
       Contact: { rich_text: richText(item.source.contactName) },
       Tags: { multi_select: item.tags.map((t) => ({ name: t })) },
       Source: { rich_text: richText('WhatsApp') },
