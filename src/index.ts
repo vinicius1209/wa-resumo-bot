@@ -418,6 +418,10 @@ async function main(): Promise<void> {
       // Triage: se o contato está mapeado a um projeto, triar a mensagem
       if (triageService) {
         const project = triageService.findProjectByContact(message.senderId);
+        logger.info(
+          { senderId: message.senderId, senderName: message.senderName, projectFound: project?.name ?? null },
+          'Triage: buscando projeto para contato DM',
+        );
         if (project) {
           // Processar mídia se houver (áudio → transcrição, imagem → descrição)
           let mediaDesc: string | undefined;

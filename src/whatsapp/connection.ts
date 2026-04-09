@@ -155,15 +155,23 @@ export class WhatsAppConnection extends EventEmitter {
         if (isJidGroup(remoteJid)) {
           const stored = this.parseMessage(msg, remoteJid);
           if (stored) {
+            this.logger.debug(
+              { groupId: stored.groupId, senderName: stored.senderName, type: stored.messageType },
+              'Mensagem de grupo recebida',
+            );
             this.emit('message:group', stored, msg);
           }
           continue;
         }
 
-        // DMs (mensagens diretas) — apenas se habilitado
-        if (config.conversation.dmEnabled && !isJidGroup(remoteJid)) {
+        // DMs (mensagens diretas) — habilitado se conversação DM ou triage estiver ativo
+        if ((config.conversation.dmEnabled || config.triage.enabled) && !isJidGroup(remoteJid)) {
           const stored = this.parseMessage(msg, remoteJid);
           if (stored) {
+            this.logger.info(
+              { senderId: stored.senderId, senderName: stored.senderName, type: stored.messageType, contentLength: stored.content?.length ?? 0 },
+              'DM recebida',
+            );
             this.emit('message:dm', stored, msg);
           }
         }
