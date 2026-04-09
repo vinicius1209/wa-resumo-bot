@@ -126,6 +126,32 @@ export interface ConversationSessionDetail {
   lastActivity: number
 }
 
+// Triage types
+export interface TriageProject {
+  id: string
+  name: string
+  contacts: string[]
+  boards: Array<{ adapter: string; config: Record<string, string> }>
+  repoUrl?: string
+  context?: string
+}
+
+export interface TriageItemEntry {
+  id: number
+  project_id: string
+  board_adapter: string
+  board_item_id: string
+  board_item_url: string | null
+  title: string
+  type: string
+  priority: string
+  tags_json: string
+  source_contact: string
+  source_message_id: string
+  raw_content: string
+  created_at: number
+}
+
 // API calls
 export const api = {
   status: () => apiFetch<BotStatus>('/api/status'),
@@ -163,4 +189,14 @@ export const api = {
   },
   conversationDetail: (sessionId: string) =>
     apiFetch<ConversationSessionDetail>(`/api/conversations/${encodeURIComponent(sessionId)}`),
+  triageProjects: () => apiFetch<TriageProject[]>('/api/triage/projects'),
+  triageProject: (id: string) => apiFetch<TriageProject>(`/api/triage/projects/${encodeURIComponent(id)}`),
+  createTriageProject: (data: Omit<TriageProject, 'id'>) =>
+    apiFetch<{ ok: true; id: string }>('/api/triage/projects', { method: 'POST', body: JSON.stringify(data) }),
+  updateTriageProject: (id: string, data: Partial<TriageProject>) =>
+    apiFetch<{ ok: true }>(`/api/triage/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTriageProject: (id: string) =>
+    apiFetch<{ ok: true }>(`/api/triage/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  triageItems: (projectId: string, limit = 50) =>
+    apiFetch<TriageItemEntry[]>(`/api/triage/projects/${encodeURIComponent(projectId)}/items?limit=${limit}`),
 }

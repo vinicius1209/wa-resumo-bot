@@ -201,6 +201,7 @@ async function main(): Promise<void> {
         commandHandler,
         storage,
         conversationService: conversationService ?? undefined,
+        triageService: triageService ?? undefined,
       });
     } catch (error) {
       logger.error({ error }, 'Erro ao iniciar dashboard');

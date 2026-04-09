@@ -376,6 +376,78 @@ export class ProjectTriageService {
   }
 
   // ============================================
+  // Triage items query
+  // ============================================
+
+  /** Lista itens de triage de um projeto com paginação. */
+  getTriageItems(
+    projectId: string,
+    limit = 50,
+    offset = 0,
+  ): {
+    id: number;
+    project_id: string;
+    board_adapter: string;
+    board_item_id: string;
+    board_item_url: string | null;
+    title: string;
+    type: string;
+    priority: string;
+    tags: string[];
+    source_contact: string;
+    source_message_id: string;
+    raw_content: string;
+    created_at: number;
+  }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM triage_items
+         WHERE project_id = ?
+         ORDER BY created_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(projectId, limit, offset) as {
+        id: number;
+        project_id: string;
+        board_adapter: string;
+        board_item_id: string;
+        board_item_url: string | null;
+        title: string;
+        type: string;
+        priority: string;
+        tags_json: string;
+        source_contact: string;
+        source_message_id: string;
+        raw_content: string;
+        created_at: number;
+      }[];
+
+    return rows.map((r) => {
+      let tags: string[] = [];
+      try {
+        tags = JSON.parse(r.tags_json) as string[];
+      } catch {
+        // ignore malformed JSON
+      }
+      return {
+        id: r.id,
+        project_id: r.project_id,
+        board_adapter: r.board_adapter,
+        board_item_id: r.board_item_id,
+        board_item_url: r.board_item_url,
+        title: r.title,
+        type: r.type,
+        priority: r.priority,
+        tags,
+        source_contact: r.source_contact,
+        source_message_id: r.source_message_id,
+        raw_content: r.raw_content,
+        created_at: r.created_at,
+      };
+    });
+  }
+
+  // ============================================
   // Private helpers
   // ============================================
 

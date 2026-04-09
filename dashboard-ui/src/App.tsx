@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { ChatPage } from '@/pages/ChatPage'
 import { GroupsPage } from '@/pages/GroupsPage'
+import { ProjectsPage } from '@/pages/ProjectsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ConversationsPage } from '@/pages/ConversationsPage'
 
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/conversations" element={<ConversationsPage />} />
             <Route path="/groups" element={<GroupsPage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
