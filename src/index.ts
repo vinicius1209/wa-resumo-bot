@@ -14,6 +14,7 @@ import { WhatsAppConnection } from './whatsapp';
 import { SQLiteStorage } from './storage';
 import { createLLMProvider } from './llm';
 import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand, PodcastCommand } from './commands';
+import { ProjectTriageService, createProjectBoardAdapter } from './triage';
 import { SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, PodcastService, RateLimitManager, CommandDebouncer, eventBus } from './services';
 import { createTTSProvider } from './tts';
 import { startDashboard, stopDashboard } from './dashboard/server';
@@ -113,6 +114,26 @@ async function main(): Promise<void> {
     podcastService.initTable(storage.getDatabase());
     podcastService.setAnalytics(analytics);
     logger.info({ ttsProvider: ttsProvider.name }, '✓ Podcast habilitado');
+  }
+
+  // 11.7. Project Triage (triagem automática de DMs por projeto)
+  let triageService: ProjectTriageService | null = null;
+  if (config.triage.enabled) {
+    triageService = new ProjectTriageService(llmProvider);
+    triageService.initTable(storage.getDatabase());
+
+    // Registrar adapters dos projetos configurados
+    for (const project of triageService.getAllProjects()) {
+      for (const boardCfg of project.boards) {
+        if (!triageService.hasAdapter(boardCfg.adapter)) {
+          const adapter = createProjectBoardAdapter(boardCfg.adapter, boardCfg.config);
+          if (adapter) {
+            triageService.registerAdapter(boardCfg.adapter, adapter);
+          }
+        }
+      }
+    }
+    logger.info('✓ Triage de projetos habilitado');
   }
 
   // 12. Comandos
@@ -367,10 +388,13 @@ async function main(): Promise<void> {
     catchupService.updateActivity(message.groupId, message.senderId, message.timestamp);
   });
 
-  // DMs conversacionais (se habilitado)
-  if (conversationService && config.conversation.dmEnabled) {
+  // DMs: triage de projetos + conversação
+  const dmEnabled = (triageService && config.triage.enabled)
+    || (conversationService && config.conversation.dmEnabled);
+
+  if (dmEnabled) {
     whatsapp.on('message:dm', async (message: StoredMessage, rawMessage: proto.IWebMessageInfo) => {
-      // Ignorar mensagens viewOnce em DMs também
+      // Ignorar mensagens viewOnce em DMs
       if (whatsapp.isViewOnceMessage(rawMessage.message)) {
         return;
       }
@@ -386,12 +410,58 @@ async function main(): Promise<void> {
         return;
       }
 
-      await conversationService!.handleConversation(
-        'dm', message.senderId, message.senderName,
-        message.content, reply,
-      );
+      // Triage: se o contato está mapeado a um projeto, triar a mensagem
+      if (triageService) {
+        const project = triageService.findProjectByContact(message.senderId);
+        if (project) {
+          // Processar mídia se houver (áudio → transcrição, imagem → descrição)
+          let mediaDesc: string | undefined;
+          let audioTranscript: string | undefined;
+
+          if (mediaProcessor && message.messageType !== 'text' && message.messageType !== 'unknown') {
+            try {
+              const buffer = await whatsapp.downloadMedia(rawMessage);
+              if (buffer) {
+                const mimeType = whatsapp.getMediaMimeType(rawMessage);
+                if (message.messageType === 'audio') {
+                  audioTranscript = await mediaProcessor.processAudio(buffer, mimeType) ?? undefined;
+                } else if (message.messageType === 'image' || message.messageType === 'sticker') {
+                  mediaDesc = await mediaProcessor.processImage(buffer, mimeType) ?? undefined;
+                }
+              }
+            } catch (err) {
+              logger.warn({ err, messageId: message.id }, 'Erro ao processar mídia de DM para triage');
+            }
+          }
+
+          try {
+            const result = await triageService.triageMessage(message, mediaDesc, audioTranscript);
+            if (result && result.results.length > 0) {
+              const boardNames = result.results.map((r) => r.url || r.id).join('\n');
+              await reply(
+                `✅ *${result.item.title}*\n`
+                + `Tipo: ${result.item.type} | Prioridade: ${result.item.priority}\n`
+                + `Registrado em: ${boardNames}`,
+              );
+            }
+          } catch (err) {
+            logger.error({ err, messageId: message.id }, 'Erro no triage de DM');
+          }
+          return; // Mensagem triada — não encaminhar para conversação
+        }
+      }
+
+      // Conversação: se não foi triada e conversação DM está habilitada
+      if (conversationService && config.conversation.dmEnabled) {
+        await conversationService.handleConversation(
+          'dm', message.senderId, message.senderName,
+          message.content, reply,
+        );
+      }
     });
-    logger.info('✓ DMs conversacionais habilitadas');
+
+    if (triageService) logger.info('✓ Triage de DMs habilitado');
+    if (conversationService && config.conversation.dmEnabled) logger.info('✓ DMs conversacionais habilitadas');
   }
 
   // 10. Conectar

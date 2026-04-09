@@ -277,5 +277,9 @@ export interface AppConfig {
     host2Voice: string;
     maxDurationMinutes: number;
   };
+  triage: {
+    enabled: boolean;
+    notionApiKey: string;
+  };
   logLevel: string;
 }

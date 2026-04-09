@@ -71,5 +71,9 @@ export const config: AppConfig = {
     host2Voice: env('PODCAST_HOST2_VOICE', 'Puck'),
     maxDurationMinutes: envInt('PODCAST_MAX_DURATION_MINUTES', 5),
   },
+  triage: {
+    enabled: env('TRIAGE_ENABLED', 'false') === 'true',
+    notionApiKey: env('NOTION_API_KEY'),
+  },
   logLevel: env('LOG_LEVEL', 'info'),
 };

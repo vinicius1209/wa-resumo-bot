@@ -69,6 +69,12 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
 - **`src/services/command-debouncer.ts`** — Debounces repeated LLM commands from same user (2s delay). If user sends /resumo 100x, only the last one executes
 - **`src/services/conversation-service.ts`** — Multi-turn conversation sessions keyed by (groupId, senderId). Context injection from recent messages + sentiment. SQLite persistence + in-memory cache. TTL-based session expiry
 - **`src/services/analytics-service.ts`** — Fire-and-forget event tracking. Aggregation queries for daily/weekly usage, cost by model, performance metrics. Shared SQLite connection via `initTable(db)`
+- **`src/triage/`** — Project triage module: auto-classifies DMs from mapped contacts and creates items in external boards
+  - `types.ts` — `IProjectBoard`, `TriageItem`, `BoardItem`, `ProjectConfig` interfaces
+  - `classifier.ts` — LLM-based message classification (type, priority, title, description, tags)
+  - `project-triage-service.ts` — Orchestrator: contact→project mapping, classification, multi-board dispatch, SQLite persistence
+  - `adapters/notion-adapter.ts` — Notion API adapter (native fetch, no extra deps). Implements `IProjectBoard`
+  - `adapters/index.ts` — Adapter factory (`createProjectBoardAdapter`). Add new adapters here (Jira, Linear, etc.)
 
 ### SQLite Tables
 
@@ -89,6 +95,8 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
 | `group_settings` | Per-group allowlist, feature toggles (`features_json`), notes |
 | `podcast_cache` | Cached podcast audio blobs (OGG Opus) with message hash + TTL |
 | `chat_history` | Dashboard command history with optional audio (audio_base64, audio_duration) |
+| `triage_projects` | Contact→project mapping, board configs (contacts_json, boards_json), repo URL, context |
+| `triage_items` | Triage history: board items created per message (project_id, adapter, board_item_id, type, priority) |
 
 ### Adding New Components
 
@@ -99,6 +107,8 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
 **New LLM provider**: implement `ILLMProvider` in `src/llm/`, register in `provider-factory.ts`
 
 **New TTS provider**: implement `ITTSProvider` in `src/tts/`, register in `tts-factory.ts`
+
+**New triage board adapter**: implement `IProjectBoard` in `src/triage/adapters/`, add case in `adapters/index.ts` factory
 
 ## Configuration
 
@@ -125,6 +135,8 @@ All config via `.env` (see `.env.example`). Key variables:
 - `TTS_PROVIDER` — `"gemini"` or `"openai"` (default: `gemini`)
 - `GOOGLE_TTS_API_KEY` — API key for Gemini TTS
 - `PODCAST_HOST1_VOICE` / `PODCAST_HOST2_VOICE` — Gemini voice names (default: `Kore`/`Puck`)
+- `TRIAGE_ENABLED` — enable project triage for DMs (default: `false`)
+- `NOTION_API_KEY` — Notion integration API key (for triage board adapter)
 
 ## Feature Toggles
 
