@@ -21,6 +21,7 @@ import {
   TriageItem,
 } from './types';
 import { TriageClassifier } from './classifier';
+import { CodeAgent } from './code-agent';
 
 const logger = pino({ name: 'project-triage-service' });
 
@@ -47,6 +48,7 @@ export class ProjectTriageService {
   private db!: Database.Database;
   private classifier: TriageClassifier;
   private adapters = new Map<string, IProjectBoard>();
+  private codeAgent: CodeAgent | null = null;
 
   constructor(
     private llmProvider: ILLMProvider,
@@ -121,6 +123,12 @@ export class ProjectTriageService {
   registerAdapter(name: string, adapter: IProjectBoard): void {
     this.adapters.set(name, adapter);
     logger.info({ adapterName: name }, 'Adapter de board registrado');
+  }
+
+  /** Registra o CodeAgent para análise automática de repos locais. */
+  setCodeAgent(agent: CodeAgent): void {
+    this.codeAgent = agent;
+    logger.info('CodeAgent registrado no ProjectTriageService');
   }
 
   // ============================================
@@ -355,6 +363,25 @@ export class ProjectTriageService {
         },
         'Item de triage criado no board',
       );
+    }
+
+    // Fire-and-forget: spawn code agent se o repo for um caminho local
+    if (this.codeAgent && project.repoUrl && project.repoUrl.startsWith('/')) {
+      const prompt = this.codeAgent.buildTriagePrompt(triageItem, project);
+      this.codeAgent
+        .analyze({ repoDir: project.repoUrl, prompt })
+        .then((result) => {
+          eventBus.emitBotEvent('code_agent', {
+            projectId: project.id,
+            success: result.success,
+            durationMs: result.durationMs,
+            outputLength: result.output.length,
+          });
+          // TODO: atualizar o board item com a análise quando suportado
+        })
+        .catch((err) => {
+          logger.error({ err, projectId: project.id }, 'Code agent falhou');
+        });
     }
 
     // Emit event for dashboard (fire-and-forget)

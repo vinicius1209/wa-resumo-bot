@@ -14,7 +14,7 @@ import { WhatsAppConnection } from './whatsapp';
 import { SQLiteStorage } from './storage';
 import { createLLMProvider } from './llm';
 import { CommandHandler, ResumoCommand, HelpCommand, StatsCommand, PalavrasCommand, LinksCommand, RetroCommand, DividaCommand, QuizCommand, isQuizAnswer, CompromissosCommand, TemperaturaCommand, PersonaCommand, MePerdiCommand, PodcastCommand } from './commands';
-import { ProjectTriageService, createProjectBoardAdapter } from './triage';
+import { ProjectTriageService, createProjectBoardAdapter, CodeAgent } from './triage';
 import { SummaryService, MediaProcessor, AnalyticsService, WordOfDayService, LinkService, StatsService, RetroService, DebtService, QuizService, CommitmentService, SentimentService, PersonaService, CatchupService, DynamicConfigService, ConversationService, PodcastService, RateLimitManager, CommandDebouncer, eventBus } from './services';
 import { createTTSProvider } from './tts';
 import { startDashboard, stopDashboard } from './dashboard/server';
@@ -133,6 +133,10 @@ async function main(): Promise<void> {
         }
       }
     }
+    // Wiring do CodeAgent para análise automática de repos locais
+    const codeAgent = new CodeAgent({ model: 'sonnet' });
+    triageService.setCodeAgent(codeAgent);
+
     logger.info('✓ Triage de projetos habilitado');
   }
 

@@ -75,6 +75,7 @@ WhatsApp message → `WhatsAppConnection` (parse) → `SQLiteStorage` (persist) 
   - `project-triage-service.ts` — Orchestrator: contact→project mapping, classification, multi-board dispatch, SQLite persistence
   - `adapters/notion-adapter.ts` — Notion API adapter (native fetch, no extra deps). Implements `IProjectBoard`
   - `adapters/index.ts` — Adapter factory (`createProjectBoardAdapter`). Add new adapters here (Jira, Linear, etc.)
+  - `code-agent.ts` — Spawns Claude CLI sessions (`claude -p --dangerously-skip-permissions`) for code analysis on local repos. Fire-and-forget from triage flow
 
 ### SQLite Tables
 
