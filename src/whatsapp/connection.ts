@@ -94,9 +94,12 @@ export class WhatsAppConnection extends EventEmitter {
     const { version } = await fetchLatestBaileysVersion();
     this.logger.info({ version }, 'Versão WA');
 
+    // Logger silencioso para o Baileys (só warn+error) — nosso app loga separadamente
+    const baileysLogger = pino({ level: 'warn' });
+
     this.socket = makeWASocket({
       auth: state,
-      logger: this.logger,
+      logger: baileysLogger,
       version,
       browser: Browsers.macOS('Chrome'),
       getMessage: async () => undefined,
